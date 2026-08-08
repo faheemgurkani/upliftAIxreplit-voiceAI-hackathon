@@ -25,6 +25,8 @@ The agent:
 - Pakistan's national conviction rate is ~8.66% (PILDAT); Balochistan sees 2% (2024)
 - Rape conviction rate nationally is below 3% (2023)
 - Witness testimony withdrawal is peer-reviewed as the primary acquittal driver
+- **Many witnesses never report at all** — fear of personal exposure and retaliation
+- **Reports that are filed often disappear** — written on paper, in a drawer, in a station the witness is afraid to return to
 - Courts operate in Urdu; 48% of Pakistan speaks Punjabi as mother tongue; 8% speaks Pashto
 - Witnesses currently thumbprint documents they cannot read, written by constables in a language they don't speak
 - Rural female literacy is ~40%; station visits are physically dangerous for many witnesses
@@ -33,11 +35,24 @@ The agent:
 - Zero literacy requirement — fully voice-driven
 - CrPC Section 161-compliant examination sequence, not an ad-hoc précis
 - Witness hears their statement read back before confirming — informed consent, not a blind thumbprint
-- Phone-only — no smartphone, no internet, no station visit required
+- Phone-only — no smartphone, no internet, no station visit required (**feature, not a limitation**; dedicated smartphone app is out of scope — it would undercut the PSTN thesis; realistic future work is **WhatsApp voice-note intake**, not a native app)
 - Privacy mode — identity decoupled from statement for sensitive cases
-- Automatic inconsistency and intimidation flagging for NGO escalation
-- Automatic witness protection referral for qualifying cases
+- **Anonymized reporting** — witness identity decoupled from statement by design; caller ID masked; no PII stored without explicit consent; allows on-record statements without personal exposure (“go on record without going on record”)
+- **Immutable timestamped record** — eliminates the “lost report” failure mode; reference code is proof of submission independent of police custody of the paper document
+- Automatic **intra-statement consistency analysis** (not “lie detection”) and intimidation flagging for NGO escalation
+- Automatic witness protection referral for qualifying cases (e.g. Punjab Witness Protection Act 2018; other provinces have distinct frameworks)
 - Multi-witness corroboration scoring to replace manual cross-referencing by lawyers
+
+### 1.5 Legal scope clarification
+
+Gawah produces **Section 161** statements (investigative, police-level) under the **Code of Criminal Procedure, 1898** (as amended) — Pakistan retained CrPC numbering (not India’s BNSS). These are **not** Section **164** statements (magistrate-level, evidentiary). Section 161 statements cannot be used as substantive evidence in court but are used to refresh witness memory and detect cross-examination inconsistencies; under **Section 162**, §161 statements must not be signed — voice confirmation with stored audio is the legally defensible confirmation mechanism. Gawah makes the Section 161 record accurate and verbatim — the problem it solves is that current constable-written précis documents are neither. The agent does not give legal advice and does not produce court-admissible evidence or corroboration directly.
+
+### 1.6 Data compliance (PDPA 2023 design)
+
+- **Applicability:** Witness voice, optional identity, offence narrative, and protection data are treated as personal / sensitive data under Pakistan’s **Personal Data Protection Act 2023** obligations (consent, purpose limitation, breach readiness).
+- **Consent:** Collected in the Phase 0 caution script **before** any fact-gathering — explicit PDPA-aligned voluntariness + purpose notice.
+- **Sensitive data:** Stricter handling — no PII stored without explicit consent; purpose limited to legal proceedings / NGO assistance; no sale, brokerage, or secondary transfer of statement data.
+- **Residency note:** Hackathon / demo may use encrypted Supabase EU (or equivalent) storage; production targets a Pakistan-hosted instance or AWS `ap-south-1` (Mumbai) path for soft localization expectations.
 
 ---
 
@@ -978,6 +993,21 @@ Agent confirms status.
 
 ---
 
+## 10a. Privacy Mode — Anonymity Mechanism
+
+Privacy mode is not a cosmetic flag. It implements **anonymized reporting** so a witness can create an on-record §161 statement without personal exposure.
+
+**Mechanism**
+1. **Caller ID masking** — Telephony layer (Twilio or equivalent) does not expose raw caller ID to NGO dashboard operators; dashboard queries return statement content + reference code + flags, not phone number.
+2. **Pseudonym** — Session stores a generated pseudonym (or none); witness name/address fields remain null when privacy mode is on.
+3. **Reference code is the link** — The 6-character code is the durable handle for lookup, PDF export, and follow-up. It is not a name and not a phone number.
+4. **NGO visibility** — Lawyer/NGO sees structured fields, consistency flags, protection referral status, and audio/PDF of the statement — not the PSTN identity of the caller.
+5. **Revocation / decoupling** — Witness (via NGO workflow) may request full decoupling: personal linkage artifacts cleared; statement + reference code remain as the immutable record.
+
+**Pitch framing:** “For the first time, a witness can go on record without going on record.”
+
+---
+
 ## 11. Security Requirements
 
 - All Supabase reads of full statement text require authenticated JWT (NGO/lawyer login)
@@ -1095,6 +1125,8 @@ gawah/
 
 | Feature | Why deferred |
 |---|---|
+| **Native smartphone app** | **Out of scope permanently for the core thesis.** Phone-only PSTN is the product moat — do not list a dedicated app as future work. |
+| **WhatsApp voice-note intake** | Realistic Pakistan channel (high penetration, low-literacy friendly) without requiring a Gawah-branded app; post-hackathon integration candidate |
 | Pashto STT | Whisper large-v3 accuracy insufficient for legal use; do not fake it |
 | Deposition prep module | Natural extension post-hackathon; same infra, different prompt |
 | Voice biometric deception research | Longitudinal dataset required; scientifically premature as binary output |
@@ -1110,7 +1142,9 @@ gawah/
 
 ---
 
-## 16. Intra-Statement Inconsistency Detection Engine
+## 16. Intra-Statement Consistency Analysis Engine
+
+> **Naming:** This is **intra-statement consistency analysis** — never “lie detection.” The system does not infer intent, truthfulness, or credibility. It surfaces internal contradictions for human NGO counsel.
 
 ### Why this feature exists
 

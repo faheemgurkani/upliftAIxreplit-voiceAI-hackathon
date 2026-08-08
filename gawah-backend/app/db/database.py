@@ -149,13 +149,13 @@ class Database:
         flags: Optional[str] = None,
     ) -> Tuple[List[StatementRecord], int]:
         page = max(page, 1)
-        page_size = min(max(page_size, 1), 100)
+        page_size = min(max(page_size, 1), 1000)
 
         if self._supabase is not None:
             query = self._supabase.table("statements").select("*", count="exact")
             if status:
                 query = query.eq("status", status)
-            if flags == "intimidation":
+            if flags and "intimidation" in {f.strip() for f in flags.split(",")}:
                 query = query.eq("intimidation_flag", True)
             result = (
                 query.order("created_at", desc=True)
@@ -170,11 +170,25 @@ class Database:
             rows = store["statements"]
             if status:
                 rows = [r for r in rows if r.get("status") == status]
-            if flags == "intimidation":
-                rows = [r for r in rows if r.get("intimidation_flag")]
-            elif flags == "inconsistency":
-                rows = [r for r in rows if r.get("inconsistency_flags")]
-            rows = sorted(rows, key=lambda s: s.get("created_at", ""), reverse=True)
+            if flags:
+                flag_set = {f.strip() for f in flags.split(",") if f.strip()}
+                if "intimidation" in flag_set:
+                    rows = [r for r in rows if r.get("intimidation_flag")]
+                if "inconsistency" in flag_set:
+                    rows = [r for r in rows if r.get("inconsistency_flags")]
+            # Skip legacy/partial rows that cannot hydrate into StatementRecord.
+            valid_rows: List[Dict[str, Any]] = []
+            for row in rows:
+                if not row.get("ref_code"):
+                    continue
+                try:
+                    StatementRecord.model_validate(row)
+                    valid_rows.append(row)
+                except Exception:
+                    continue
+            rows = sorted(
+                valid_rows, key=lambda s: s.get("created_at", ""), reverse=True
+            )
             total = len(rows)
             offset = (page - 1) * page_size
             slice_rows = rows[offset : offset + page_size]

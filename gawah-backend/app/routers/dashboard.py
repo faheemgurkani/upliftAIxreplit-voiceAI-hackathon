@@ -76,6 +76,12 @@ async def dashboard_cluster_detail(
             "witness_type": s.witness_type,
             "corroboration_score": s.corroboration_score,
             "intimidation_flag": s.intimidation_flag,
+            "inconsistency_flags": [
+                f.model_dump() if hasattr(f, "model_dump") else f
+                for f in (s.inconsistency_flags or [])
+            ],
+            "privacy_mode": s.privacy_mode,
+            "incident_cluster_id": s.incident_cluster_id,
         }
         for s in linked
     ]

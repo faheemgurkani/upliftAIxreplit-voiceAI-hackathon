@@ -63,8 +63,9 @@ class Settings(BaseSettings):
     ngo_webhook_url: str = ""
 
     case_id_secret: str = "change-me-in-production"
-    local_db_path: str = "data/gawah_store.json"
-    local_audio_dir: str = "data/audio"
+    # Absolute defaults so cwd (repo root vs gawah-backend) does not fork the store.
+    local_db_path: str = str(_BACKEND_DIR / "data" / "gawah_store.json")
+    local_audio_dir: str = str(_BACKEND_DIR / "data" / "audio")
 
     @field_validator("debug", mode="before")
     @classmethod

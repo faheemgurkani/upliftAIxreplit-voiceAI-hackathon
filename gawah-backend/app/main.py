@@ -60,8 +60,7 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health():
+def _health_payload():
     db = get_db()
     return {
         "status": "healthy",
@@ -74,3 +73,14 @@ async def health():
         "llm_enabled": settings.llm_enabled,
         "assistant_id_set": bool(settings.uplift_assistant_id),
     }
+
+
+@app.get("/health")
+async def health():
+    return _health_payload()
+
+
+@app.get("/api/healthz")
+async def healthz():
+    """Frontend / Replit compatibility alias."""
+    return _health_payload()

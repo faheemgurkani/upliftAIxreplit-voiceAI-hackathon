@@ -36,5 +36,23 @@
       "created_at": "2026-08-08T09:04:56.708104Z",
       "updated_at": "2026-08-08T09:04:56.718030+00:00"
     }
+  ],
+  "incident_clusters": [],
+  "sessions": [
+    {
+      "room_name": "web-7e6230d3-ea41-483b-babc-3cf2cfeafc60",
+      "created_at": "2026-08-08T11:27:39.359299+00:00",
+      "status": "active",
+      "demo": false
+    }
+  ],
+  "kpi_events": [
+    {
+      "type": "session_created",
+      "meta": {
+        "room": "web-7e6230d3-ea41-483b-babc-3cf2cfeafc60"
+      },
+      "at": "2026-08-08T11:27:39.361212+00:00"
+    }
   ]
 }
