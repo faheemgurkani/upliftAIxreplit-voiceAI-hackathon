@@ -1,5 +1,9 @@
 # Server
 
-Backend / API (voice pipeline orchestration, auth, integrations).
+The Gawah FastAPI backend lives in [`../gawah-backend`](../gawah-backend).
 
-Replace this placeholder once the backend stack is chosen.
+```bash
+# from repo root
+.venv/bin/pip install -r gawah-backend/requirements.txt
+.venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --port 8000
+```

@@ -70,3 +70,10 @@ test-results/
 temp/
 uploads/
 media/generated/
+
+# Gawah local DB / runtime
+gawah-backend/data/*.json
+!gawah-backend/data/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -1,10 +1,10 @@
-# Uplift AI × Replit — Voice AI Hackathon
+# Gawah — Uplift AI × Replit Voice AI Hackathon
 
-> Project name and one-line pitch coming soon.
+Multilingual voice witness statements for Pakistan policing demos (Urdu / Punjabi / Pashto).
 
 ## Overview
 
-Brief description of the problem, solution, and who it helps.
+**Gawah** captures a witness account over a phone call (Vapi + Uplift Orator), structures it into a legal statement with an LLM, reads it back for confirmation, and produces a printable PDF for the officer dashboard.
 
 ## Demo
 
@@ -25,36 +25,33 @@ _TBD — fill in once the idea and stack are locked._
 
 ```text
 .
-├── client/          # Frontend app
-├── server/          # Backend / API
+├── gawah-backend/   # FastAPI backend (Vapi, LLM, PDF, DB)
+├── client/          # Next.js dashboard (coming next)
+├── server/          # Pointer to gawah-backend
 ├── shared/          # Shared types, constants, utils
-├── public/          # Static assets served as-is
-├── assets/          # Design, pitch, media assets
-├── docs/            # Project docs & submission notes
+├── public/          # Static assets
+├── assets/          # Pitch / demo / brand
+├── docs/            # Brief, architecture, submission
 ├── scripts/         # Helper scripts
 └── tests/           # Tests
 ```
 
 ## Getting Started
 
-### Prerequisites
-
-- Node.js (LTS recommended)
-- npm or pnpm
-- API keys listed in `.env.example`
-
-### Setup
+### Backend (ready)
 
 ```bash
-# Install dependencies (once package manager is chosen)
-npm install
+source .venv/bin/activate
+.venv/bin/pip install -r gawah-backend/requirements.txt
+cp gawah-backend/.env.example gawah-backend/.env
 
-# Copy environment variables
-cp .env.example .env
-
-# Start development
-npm run dev
+.venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --port 8000
+# Docs: http://localhost:8000/docs
 ```
+
+### Frontend
+
+Next.js dashboard will live in `client/` (not wired yet).
 
 ## Environment Variables
 
