@@ -10,17 +10,11 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.models.statement import StatementRecord, StructuredStatement
+from app.models.statement import StatementRecord
 
 
 class PDFService:
-    """Generate printable FIR-style witness statement PDFs."""
-
     def generate_statement_pdf(self, statement: StatementRecord) -> bytes:
-        structured = statement.structured_statement
-        if isinstance(structured, dict):
-            structured = StructuredStatement.model_validate(structured)
-
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -29,9 +23,8 @@ class PDFService:
             rightMargin=18 * mm,
             topMargin=16 * mm,
             bottomMargin=16 * mm,
-            title=f"Gawah Statement {statement.case_id}",
+            title=f"Gawah Statement {statement.ref_code}",
         )
-
         styles = getSampleStyleSheet()
         styles.add(
             ParagraphStyle(
@@ -39,25 +32,6 @@ class PDFService:
                 parent=styles["Heading1"],
                 alignment=TA_CENTER,
                 fontSize=16,
-                spaceAfter=6,
-            )
-        )
-        styles.add(
-            ParagraphStyle(
-                name="SubCenter",
-                parent=styles["Normal"],
-                alignment=TA_CENTER,
-                fontSize=10,
-                textColor=colors.HexColor("#333333"),
-                spaceAfter=12,
-            )
-        )
-        styles.add(
-            ParagraphStyle(
-                name="Section",
-                parent=styles["Heading2"],
-                fontSize=12,
-                spaceBefore=10,
                 spaceAfter=6,
             )
         )
@@ -81,6 +55,15 @@ class PDFService:
         )
         styles.add(
             ParagraphStyle(
+                name="Section",
+                parent=styles["Heading2"],
+                fontSize=12,
+                spaceBefore=10,
+                spaceAfter=6,
+            )
+        )
+        styles.add(
+            ParagraphStyle(
                 name="Small",
                 parent=styles["Normal"],
                 fontSize=8,
@@ -89,25 +72,27 @@ class PDFService:
         )
 
         story = []
-        story.append(Paragraph("GAWAH — Witness Statement", styles["CenterTitle"]))
+        story.append(Paragraph("GAWAH — CrPC §161 Witness Statement", styles["CenterTitle"]))
         story.append(
             Paragraph(
-                "First Information / Witness Record (Hackathon MVP Format)",
-                styles["SubCenter"],
+                "Voice-confirmed record — no signature / thumbprint (CrPC §162 reliability).",
+                styles["Small"],
             )
         )
+        story.append(Spacer(1, 8))
 
         meta = [
-            ["Case Reference", statement.case_id],
-            ["Statement ID", statement.id],
-            ["Call SID", statement.call_sid or "—"],
-            ["Witness Language", statement.witness_language],
-            ["Witness Confirmed", "Yes" if statement.confirmed else "No"],
-            ["Officer Confirmed", "Yes" if statement.officer_confirmed else "No"],
+            ["Reference Code", statement.ref_code],
+            ["Status", statement.status],
+            ["Language", statement.language_of_call],
+            ["Witness Type", statement.witness_type],
+            ["Privacy Mode", "Yes" if statement.privacy_mode else "No"],
+            ["Witness Confirmed", "Yes" if statement.confirmed_by_witness else "No"],
+            ["Intimidation Flag", "Yes" if statement.intimidation_flag else "No"],
             ["Created At", str(statement.created_at)],
         ]
-        meta_table = Table(meta, colWidths=[45 * mm, 120 * mm])
-        meta_table.setStyle(
+        table = Table(meta, colWidths=[50 * mm, 115 * mm])
+        table.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F2F2F2")),
@@ -116,99 +101,67 @@ class PDFService:
                     ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
                     ("TOPPADDING", (0, 0), (-1, -1), 4),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ]
             )
         )
-        story.append(meta_table)
-        story.append(Spacer(1, 10))
+        story.append(table)
 
-        story.append(Paragraph("English Legal Summary", styles["Section"]))
+        story.append(Paragraph("Five Legal Fields", styles["Section"]))
         story.append(
             Paragraph(
-                f"<b>Witness:</b> {self._esc(structured.witness_name or 'unknown')}<br/>"
-                f"<b>Date:</b> {self._esc(structured.incident_date or 'unknown')} &nbsp; "
-                f"<b>Time:</b> {self._esc(structured.incident_time or 'unknown')}<br/>"
-                f"<b>Location:</b> {self._esc(structured.incident_location or 'unknown')}",
+                f"<b>Time:</b> {self._esc(statement.time_of_incident)}<br/>"
+                f"<b>Location:</b> {self._esc(statement.location)}<br/>"
+                f"<b>Persons:</b> {self._esc(', '.join(statement.persons_present))}<br/>"
+                f"<b>Relationship:</b> {self._esc(statement.relationship_to_accused)}",
                 styles["BodyLeft"],
             )
         )
-
-        story.append(Paragraph("Persons Involved", styles["Section"]))
-        if structured.persons_involved:
-            for person in structured.persons_involved:
-                story.append(Paragraph(f"• {self._esc(person)}", styles["BodyLeft"]))
-        else:
-            story.append(Paragraph("• None recorded", styles["BodyLeft"]))
-
-        story.append(Paragraph("Sequence of Events", styles["Section"]))
-        if structured.sequence_of_events:
-            for idx, event in enumerate(structured.sequence_of_events, start=1):
-                story.append(Paragraph(f"{idx}. {self._esc(event)}", styles["BodyLeft"]))
-        else:
-            story.append(Paragraph("1. No events recorded", styles["BodyLeft"]))
-
-        story.append(Paragraph("Flagged Inconsistencies", styles["Section"]))
-        inconsistencies = statement.inconsistencies or structured.inconsistencies
-        if inconsistencies:
-            for item in inconsistencies:
-                story.append(Paragraph(f"• {self._esc(item)}", styles["BodyLeft"]))
-        else:
-            story.append(Paragraph("• None flagged", styles["BodyLeft"]))
-
-        story.append(Paragraph("Raw Transcript / Vernacular Account", styles["Section"]))
-        transcript = statement.raw_transcript or "—"
-        # Keep RTL-ish presentation for Urdu/Pashto/Punjabi by right-aligning.
+        story.append(Paragraph("Sequence of Events (verbatim)", styles["Section"]))
         body_style = (
             styles["BodyRight"]
-            if statement.witness_language in {"urdu", "punjabi", "pashto"}
+            if statement.language_of_call in {"ur", "pa", "ps"}
             else styles["BodyLeft"]
         )
-        story.append(Paragraph(self._esc(transcript), body_style))
+        story.append(Paragraph(self._esc(statement.sequence_of_events), body_style))
 
-        story.append(Spacer(1, 18))
-        story.append(Paragraph("Verification", styles["Section"]))
-        thumb = Table(
-            [
-                ["Witness Signature / Thumbprint", "Recording Officer"],
-                ["\n\n\n\n", "\n\n\n\n"],
-                ["Name: ____________________", "Name: ____________________"],
-                ["Date: ____________________", "Date: ____________________"],
-            ],
-            colWidths=[82 * mm, 82 * mm],
-        )
-        thumb.setStyle(
-            TableStyle(
-                [
-                    ("BOX", (0, 0), (0, -1), 0.8, colors.black),
-                    ("BOX", (1, 0), (1, -1), 0.8, colors.black),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE")),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]
+        if statement.inconsistency_flags:
+            story.append(Paragraph("Inconsistency Flags", styles["Section"]))
+            for flag in statement.inconsistency_flags:
+                data = flag.model_dump() if hasattr(flag, "model_dump") else flag
+                story.append(
+                    Paragraph(
+                        f"• [{data.get('contradiction_type') or data.get('category')}] "
+                        f"{self._esc(data.get('contradiction_description') or data.get('analysis'))}",
+                        styles["BodyLeft"],
+                    )
+                )
+
+        if statement.corroboration_score is not None:
+            story.append(Paragraph("Corroboration (pre-litigation only)", styles["Section"]))
+            story.append(
+                Paragraph(
+                    f"Score: {statement.corroboration_score}. "
+                    "Disclaimer: Pre-litigation intelligence only — not admissible "
+                    "corroboration under CrPC Section 162.",
+                    styles["BodyLeft"],
+                )
             )
-        )
-        story.append(thumb)
-        story.append(Spacer(1, 10))
+
+        story.append(Spacer(1, 16))
         story.append(
             Paragraph(
-                "Generated by Gawah Voice AI — for hackathon demonstration use.",
+                "Voice confirmation replaces thumbprint. Generated by Gawah.",
                 styles["Small"],
             )
         )
-
         doc.build(story)
         return buffer.getvalue()
 
     @staticmethod
     def _esc(value: Optional[str]) -> str:
-        text = value or ""
+        text = value or "—"
         return (
             text.replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -216,11 +169,11 @@ class PDFService:
         )
 
 
-_pdf_service: PDFService | None = None
+_pdf: PDFService | None = None
 
 
 def get_pdf_service() -> PDFService:
-    global _pdf_service
-    if _pdf_service is None:
-        _pdf_service = PDFService()
-    return _pdf_service
+    global _pdf
+    if _pdf is None:
+        _pdf = PDFService()
+    return _pdf

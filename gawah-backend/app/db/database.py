@@ -4,18 +4,18 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import Settings, get_settings
-from app.models.case import CaseCreate, CaseRecord
-from app.models.statement import StatementRecord, StructuredStatement
+from app.models.cluster import IncidentCluster
+from app.models.statement import InconsistencyFlag, StatementRecord
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _iso(value: datetime | str | None) -> str:
+def _iso(value: datetime | str | None = None) -> str:
     if value is None:
         return _now().isoformat()
     if isinstance(value, datetime):
@@ -24,18 +24,20 @@ def _iso(value: datetime | str | None) -> str:
 
 
 class Database:
-    """Persistence layer with Supabase primary and local JSON fallback."""
-
     def __init__(self, settings: Settings):
         self.settings = settings
         self._lock = threading.Lock()
         self._supabase = None
         self._store_path = Path(settings.local_db_path)
+        Path(settings.local_audio_dir).mkdir(parents=True, exist_ok=True)
 
         if settings.use_supabase:
             from supabase import create_client
 
-            self._supabase = create_client(settings.supabase_url, settings.supabase_key)
+            self._supabase = create_client(
+                settings.supabase_url,
+                settings.supabase_anon_or_service_key,
+            )
         else:
             self._ensure_local_store()
 
@@ -46,97 +48,36 @@ class Database:
     def _ensure_local_store(self) -> None:
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
         if not self._store_path.exists():
-            self._write_local({"cases": [], "statements": []})
+            self._write_local(
+                {
+                    "statements": [],
+                    "incident_clusters": [],
+                    "sessions": [],
+                    "kpi_events": [],
+                }
+            )
 
-    def _read_local(self) -> Dict[str, List[Dict[str, Any]]]:
+    def _read_local(self) -> Dict[str, Any]:
         with self._store_path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
+        data.setdefault("statements", [])
+        data.setdefault("incident_clusters", [])
+        data.setdefault("sessions", [])
+        data.setdefault("kpi_events", [])
+        return data
 
-    def _write_local(self, payload: Dict[str, List[Dict[str, Any]]]) -> None:
+    def _write_local(self, payload: Dict[str, Any]) -> None:
         with self._store_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, default=str)
-
-    # --- Cases ---
-
-    def create_case(self, payload: CaseCreate, case_id: str) -> CaseRecord:
-        record = CaseRecord(
-            case_id=case_id,
-            status=payload.status,
-            station_id=payload.station_id,
-            title=payload.title,
-            description=payload.description,
-        )
-        data = record.model_dump(mode="json")
-
-        if self._supabase is not None:
-            result = self._supabase.table("cases").insert(data).execute()
-            row = result.data[0] if result.data else data
-            return CaseRecord.model_validate(row)
-
-        with self._lock:
-            store = self._read_local()
-            store["cases"].append(data)
-            self._write_local(store)
-        return record
-
-    def get_case(self, case_id: str) -> Optional[CaseRecord]:
-        if self._supabase is not None:
-            result = (
-                self._supabase.table("cases")
-                .select("*")
-                .eq("case_id", case_id)
-                .limit(1)
-                .execute()
-            )
-            if not result.data:
-                return None
-            return CaseRecord.model_validate(result.data[0])
-
-        with self._lock:
-            store = self._read_local()
-            for item in store["cases"]:
-                if item.get("case_id") == case_id:
-                    return CaseRecord.model_validate(item)
-        return None
-
-    def update_case_status(self, case_id: str, status: str) -> Optional[CaseRecord]:
-        now = _iso(_now())
-        if self._supabase is not None:
-            result = (
-                self._supabase.table("cases")
-                .update({"status": status, "updated_at": now})
-                .eq("case_id", case_id)
-                .execute()
-            )
-            if not result.data:
-                return None
-            return CaseRecord.model_validate(result.data[0])
-
-        with self._lock:
-            store = self._read_local()
-            for item in store["cases"]:
-                if item.get("case_id") == case_id:
-                    item["status"] = status
-                    item["updated_at"] = now
-                    self._write_local(store)
-                    return CaseRecord.model_validate(item)
-        return None
 
     # --- Statements ---
 
     def save_statement(self, record: StatementRecord) -> StatementRecord:
         data = record.model_dump(mode="json")
-        data["updated_at"] = _iso(_now())
-
         if self._supabase is not None:
-            # Ensure parent case exists for FK safety in demo mode.
-            existing = self.get_case(record.case_id)
-            if existing is None:
-                self.create_case(CaseCreate(case_id=record.case_id, status="in_progress"), record.case_id)
-
             result = (
                 self._supabase.table("statements")
-                .upsert(data, on_conflict="id")
+                .upsert(data, on_conflict="ref_code")
                 .execute()
             )
             row = result.data[0] if result.data else data
@@ -144,17 +85,9 @@ class Database:
 
         with self._lock:
             store = self._read_local()
-            # Auto-create case shell if missing
-            if not any(c.get("case_id") == record.case_id for c in store["cases"]):
-                store["cases"].append(
-                    CaseRecord(case_id=record.case_id, status="in_progress").model_dump(mode="json")
-                )
-
             replaced = False
             for idx, item in enumerate(store["statements"]):
-                if item.get("id") == record.id or (
-                    record.call_sid and item.get("call_sid") == record.call_sid
-                ):
+                if item.get("ref_code") == record.ref_code or item.get("id") == record.id:
                     data["id"] = item["id"]
                     store["statements"][idx] = data
                     replaced = True
@@ -164,12 +97,13 @@ class Database:
             self._write_local(store)
         return StatementRecord.model_validate(data)
 
-    def get_statement_by_id(self, statement_id: str) -> Optional[StatementRecord]:
+    def get_statement_by_ref(self, ref_code: str) -> Optional[StatementRecord]:
+        code = ref_code.upper()
         if self._supabase is not None:
             result = (
                 self._supabase.table("statements")
                 .select("*")
-                .eq("id", statement_id)
+                .eq("ref_code", code)
                 .limit(1)
                 .execute()
             )
@@ -180,16 +114,16 @@ class Database:
         with self._lock:
             store = self._read_local()
             for item in store["statements"]:
-                if item.get("id") == statement_id:
+                if str(item.get("ref_code", "")).upper() == code:
                     return StatementRecord.model_validate(item)
         return None
 
-    def get_statement_by_case(self, case_id: str) -> Optional[StatementRecord]:
+    def get_statement_by_session(self, session_id: str) -> Optional[StatementRecord]:
         if self._supabase is not None:
             result = (
                 self._supabase.table("statements")
                 .select("*")
-                .eq("case_id", case_id)
+                .eq("session_id", session_id)
                 .order("created_at", desc=True)
                 .limit(1)
                 .execute()
@@ -200,99 +134,239 @@ class Database:
 
         with self._lock:
             store = self._read_local()
-            matches = [s for s in store["statements"] if s.get("case_id") == case_id]
+            matches = [s for s in store["statements"] if s.get("session_id") == session_id]
             if not matches:
                 return None
             matches.sort(key=lambda s: s.get("created_at", ""), reverse=True)
             return StatementRecord.model_validate(matches[0])
 
-    def get_statement_by_call(self, call_sid: str) -> Optional[StatementRecord]:
-        if self._supabase is not None:
-            result = (
-                self._supabase.table("statements")
-                .select("*")
-                .eq("call_sid", call_sid)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if not result.data:
-                return None
-            return StatementRecord.model_validate(result.data[0])
-
-        with self._lock:
-            store = self._read_local()
-            matches = [s for s in store["statements"] if s.get("call_sid") == call_sid]
-            if not matches:
-                return None
-            matches.sort(key=lambda s: s.get("created_at", ""), reverse=True)
-            return StatementRecord.model_validate(matches[0])
-
-    def list_statements(self, page: int = 1, page_size: int = 20) -> tuple[List[StatementRecord], int]:
+    def list_statements(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        status: Optional[str] = None,
+        flags: Optional[str] = None,
+    ) -> Tuple[List[StatementRecord], int]:
         page = max(page, 1)
         page_size = min(max(page_size, 1), 100)
-        offset = (page - 1) * page_size
 
         if self._supabase is not None:
-            count_result = (
-                self._supabase.table("statements")
-                .select("id", count="exact")
-                .execute()
-            )
-            total = count_result.count or 0
+            query = self._supabase.table("statements").select("*", count="exact")
+            if status:
+                query = query.eq("status", status)
+            if flags == "intimidation":
+                query = query.eq("intimidation_flag", True)
             result = (
-                self._supabase.table("statements")
-                .select("*")
-                .order("created_at", desc=True)
-                .range(offset, offset + page_size - 1)
+                query.order("created_at", desc=True)
+                .range((page - 1) * page_size, page * page_size - 1)
                 .execute()
             )
-            items = [StatementRecord.model_validate(row) for row in (result.data or [])]
-            return items, total
+            items = [StatementRecord.model_validate(r) for r in (result.data or [])]
+            return items, result.count or len(items)
+
+        with self._lock:
+            store = self._read_local()
+            rows = store["statements"]
+            if status:
+                rows = [r for r in rows if r.get("status") == status]
+            if flags == "intimidation":
+                rows = [r for r in rows if r.get("intimidation_flag")]
+            elif flags == "inconsistency":
+                rows = [r for r in rows if r.get("inconsistency_flags")]
+            rows = sorted(rows, key=lambda s: s.get("created_at", ""), reverse=True)
+            total = len(rows)
+            offset = (page - 1) * page_size
+            slice_rows = rows[offset : offset + page_size]
+            return [StatementRecord.model_validate(r) for r in slice_rows], total
+
+    def append_inconsistency_flag(
+        self, session_id: str, flag: InconsistencyFlag
+    ) -> Optional[StatementRecord]:
+        stmt = self.get_statement_by_session(session_id)
+        if stmt is None:
+            # Create shell statement so realtime flags aren't lost
+            from app.services.statement_builder import generate_ref_code
+
+            stmt = StatementRecord(
+                ref_code=generate_ref_code(),
+                session_id=session_id,
+                location="pending",
+                sequence_of_events="pending",
+                status="incomplete",
+            )
+        flags = list(stmt.inconsistency_flags or [])
+        flags.append(flag)
+        stmt.inconsistency_flags = flags
+        return self.save_statement(stmt)
+
+    def update_statement_fields(
+        self, ref_code: str, fields: Dict[str, Any]
+    ) -> Optional[StatementRecord]:
+        stmt = self.get_statement_by_ref(ref_code)
+        if stmt is None:
+            return None
+        data = stmt.model_dump()
+        data.update(fields)
+        return self.save_statement(StatementRecord.model_validate(data))
+
+    def review_statement(
+        self, ref_code: str, reviewed_by: str, reviewer_notes: str
+    ) -> Optional[StatementRecord]:
+        return self.update_statement_fields(
+            ref_code,
+            {
+                "status": "reviewed",
+                "reviewed_by": reviewed_by,
+                "reviewer_notes": reviewer_notes,
+                "reviewed_at": _now(),
+            },
+        )
+
+    # --- Clusters ---
+
+    def save_cluster(self, cluster: IncidentCluster) -> IncidentCluster:
+        data = cluster.model_dump(mode="json")
+        if self._supabase is not None:
+            result = (
+                self._supabase.table("incident_clusters")
+                .upsert(data, on_conflict="id")
+                .execute()
+            )
+            row = result.data[0] if result.data else data
+            return IncidentCluster.model_validate(row)
+
+        with self._lock:
+            store = self._read_local()
+            replaced = False
+            for idx, item in enumerate(store["incident_clusters"]):
+                if item.get("id") == cluster.id:
+                    store["incident_clusters"][idx] = data
+                    replaced = True
+                    break
+            if not replaced:
+                store["incident_clusters"].append(data)
+            self._write_local(store)
+        return IncidentCluster.model_validate(data)
+
+    def get_cluster(self, cluster_id: str) -> Optional[IncidentCluster]:
+        if self._supabase is not None:
+            result = (
+                self._supabase.table("incident_clusters")
+                .select("*")
+                .eq("id", cluster_id)
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                return None
+            return IncidentCluster.model_validate(result.data[0])
+
+        with self._lock:
+            store = self._read_local()
+            for item in store["incident_clusters"]:
+                if item.get("id") == cluster_id:
+                    return IncidentCluster.model_validate(item)
+        return None
+
+    def list_clusters(self) -> List[IncidentCluster]:
+        if self._supabase is not None:
+            result = (
+                self._supabase.table("incident_clusters")
+                .select("*")
+                .order("updated_at", desc=True)
+                .execute()
+            )
+            return [IncidentCluster.model_validate(r) for r in (result.data or [])]
 
         with self._lock:
             store = self._read_local()
             rows = sorted(
-                store["statements"],
-                key=lambda s: s.get("created_at", ""),
+                store["incident_clusters"],
+                key=lambda c: c.get("updated_at", ""),
                 reverse=True,
             )
-            total = len(rows)
-            slice_rows = rows[offset : offset + page_size]
-            return [StatementRecord.model_validate(r) for r in slice_rows], total
+            return [IncidentCluster.model_validate(r) for r in rows]
 
-    def confirm_statement(
-        self,
-        statement_id: str,
-        *,
-        witness: bool = False,
-        officer: bool = False,
-    ) -> Optional[StatementRecord]:
-        existing = self.get_statement_by_id(statement_id)
-        if existing is None:
-            return None
-
-        if witness:
-            existing.confirmed = True
-        if officer:
-            existing.officer_confirmed = True
-        existing.updated_at = _now()
-        return self.save_statement(existing)
-
-    def append_transcript(self, call_sid: str, chunk: str, case_id: str, language: str) -> StatementRecord:
-        existing = self.get_statement_by_call(call_sid)
-        if existing is None:
-            existing = StatementRecord(
-                case_id=case_id,
-                call_sid=call_sid,
-                witness_language=language,  # type: ignore[arg-type]
-                raw_transcript=chunk.strip(),
+    def list_statements_in_cluster(self, cluster_id: str) -> List[StatementRecord]:
+        if self._supabase is not None:
+            result = (
+                self._supabase.table("statements")
+                .select("*")
+                .eq("incident_cluster_id", cluster_id)
+                .execute()
             )
-        else:
-            joined = f"{existing.raw_transcript} {chunk}".strip()
-            existing.raw_transcript = joined
-            existing.updated_at = _now()
-        return self.save_statement(existing)
+            return [StatementRecord.model_validate(r) for r in (result.data or [])]
+
+        with self._lock:
+            store = self._read_local()
+            rows = [
+                s for s in store["statements"] if s.get("incident_cluster_id") == cluster_id
+            ]
+            return [StatementRecord.model_validate(r) for r in rows]
+
+    def recent_statements(self, since_iso: str, exclude_ref: str) -> List[StatementRecord]:
+        if self._supabase is not None:
+            result = (
+                self._supabase.table("statements")
+                .select("*")
+                .gte("created_at", since_iso)
+                .neq("ref_code", exclude_ref)
+                .execute()
+            )
+            return [StatementRecord.model_validate(r) for r in (result.data or [])]
+
+        with self._lock:
+            store = self._read_local()
+            rows = [
+                s
+                for s in store["statements"]
+                if s.get("created_at", "") >= since_iso
+                and s.get("ref_code") != exclude_ref
+            ]
+            return [StatementRecord.model_validate(r) for r in rows]
+
+    # --- Sessions / KPI events ---
+
+    def save_session(self, session: Dict[str, Any]) -> Dict[str, Any]:
+        if self._supabase is not None:
+            try:
+                self._supabase.table("sessions").insert(session).execute()
+            except Exception:
+                pass
+            return session
+        with self._lock:
+            store = self._read_local()
+            store["sessions"].append(session)
+            self._write_local(store)
+        return session
+
+    def record_kpi_event(self, event_type: str, meta: Optional[Dict[str, Any]] = None) -> None:
+        event = {
+            "type": event_type,
+            "meta": meta or {},
+            "at": _iso(),
+        }
+        if self._supabase is not None:
+            try:
+                self._supabase.table("kpi_events").insert(event).execute()
+            except Exception:
+                pass
+            return
+        with self._lock:
+            store = self._read_local()
+            store["kpi_events"].append(event)
+            self._write_local(store)
+
+    def all_kpi_events(self) -> List[Dict[str, Any]]:
+        if self._supabase is not None:
+            try:
+                result = self._supabase.table("kpi_events").select("*").execute()
+                return result.data or []
+            except Exception:
+                return []
+        with self._lock:
+            return list(self._read_local()["kpi_events"])
 
 
 _db: Optional[Database] = None

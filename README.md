@@ -38,7 +38,7 @@ _TBD — fill in once the idea and stack are locked._
 
 ## Getting Started
 
-### Backend (ready)
+### Backend
 
 ```bash
 source .venv/bin/activate
@@ -47,11 +47,19 @@ cp gawah-backend/.env.example gawah-backend/.env
 
 .venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --port 8000
 # Docs: http://localhost:8000/docs
+.venv/bin/python gawah-backend/scripts/smoke_test.py
 ```
 
-### Frontend
+### Frontend (NGO dashboard)
 
-Next.js dashboard will live in `client/` (not wired yet).
+```bash
+cd client
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+Routes: `/` landing · `/demo` voice session · `/dashboard` · `/clusters`
 
 ## Environment Variables
 

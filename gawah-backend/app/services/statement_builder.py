@@ -1,94 +1,66 @@
 from __future__ import annotations
 
-import hashlib
 import secrets
-from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
-from app.config import get_settings
-from app.models.statement import StructuredStatement
-
-READBACK_TEMPLATES = {
-    "urdu": (
-        "براہ کرم تصدیق کریں۔ آپ نے بتایا کہ واقعہ {incident_date} کو "
-        "{incident_time} بجے {incident_location} پر پیش آیا۔ "
-        "شامل افراد: {persons}. واقعات کی ترتیب: {events}. "
-        "اگر یہ درست ہے تو ہاں کہیں، ورنہ درست کریں۔"
-    ),
-    "punjabi": (
-        "براہ مہربانی تصدیق کرو۔ تسیں دسیا کہ واقعہ {incident_date} نوں "
-        "{incident_time} ویلے {incident_location} تے ہویا۔ "
-        "لوک شامل: {persons}. واقعات: {events}. "
-        "اگر ٹھیک اے تے ہاں آکھو، نہیں تے درست کرو۔"
-    ),
-    "pashto": (
-        "مهرباني وکړئ تایید کړئ. تاسو وویل چې پیښه په {incident_date} "
-        "په {incident_time} کې په {incident_location} کې وشوه. "
-        "شامل کسان: {persons}. ترتیب: {events}. "
-        "که سم وي نو هو ووایاست، که نه نو سم یې کړئ."
-    ),
-    "english": (
-        "Please confirm. You said the incident occurred on {incident_date} "
-        "at {incident_time} in {incident_location}. "
-        "Persons involved: {persons}. Sequence of events: {events}. "
-        "Say yes if this is correct, or correct any mistakes."
-    ),
-}
+from app.models.statement import SaveStatementArgs, StatementRecord
 
 
-def generate_case_id(station_id: Optional[str] = None) -> str:
-    """Generate a short human-usable case reference code."""
-    settings = get_settings()
-    stamp = datetime.now(timezone.utc).strftime("%y%m%d")
-    station = (station_id or "GEN").upper().replace(" ", "")[:4]
-    nonce = secrets.token_hex(2).upper()
-    digest = hashlib.sha256(
-        f"{settings.case_id_secret}:{stamp}:{station}:{nonce}".encode("utf-8")
-    ).hexdigest()[:4].upper()
-    return f"GW-{station}-{stamp}-{nonce}{digest}"
+REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
-def generate_readback_text(
-    structured: StructuredStatement | dict,
-    language: str = "urdu",
-) -> str:
-    if isinstance(structured, dict):
-        structured = StructuredStatement.model_validate(structured)
+def generate_ref_code(length: int = 6) -> str:
+    return "".join(secrets.choice(REF_CHARS) for _ in range(length))
 
-    template = READBACK_TEMPLATES.get(language, READBACK_TEMPLATES["urdu"])
-    persons = ", ".join(structured.persons_involved) or "unknown"
-    events = "; ".join(structured.sequence_of_events[:5]) or "not specified"
 
-    return template.format(
-        incident_date=structured.incident_date or "unknown",
-        incident_time=structured.incident_time or "unknown",
-        incident_location=structured.incident_location or "unknown",
-        persons=persons,
-        events=events,
+def build_readback_text(fields: SaveStatementArgs | Dict[str, Any] | StatementRecord) -> str:
+    if isinstance(fields, StatementRecord):
+        data = {
+            "time_of_incident": fields.time_of_incident,
+            "location": fields.location,
+            "persons_present": fields.persons_present,
+            "sequence_of_events": fields.sequence_of_events,
+            "relationship_to_accused": fields.relationship_to_accused,
+        }
+    elif isinstance(fields, SaveStatementArgs):
+        data = fields.model_dump()
+    else:
+        data = fields
+
+    parts: List[str] = []
+    if data.get("time_of_incident"):
+        parts.append(f"Waqia: {data['time_of_incident']} ko hua.")
+    if data.get("location"):
+        parts.append(f"Jagah: {data['location']}.")
+    persons = data.get("persons_present") or []
+    if isinstance(persons, str):
+        persons = [persons]
+    if persons:
+        parts.append(f"Maujood afraad: {', '.join(persons)}.")
+    if data.get("sequence_of_events"):
+        seq = data["sequence_of_events"]
+        if isinstance(seq, list):
+            seq = " ".join(seq)
+        parts.append(f"Waqiat: {seq}")
+    if data.get("relationship_to_accused"):
+        parts.append(f"Mulzim se taluq: {data['relationship_to_accused']}.")
+    return "\n".join(parts)
+
+
+def spoken_status_for_callback(stmt: StatementRecord) -> str:
+    """Limited callback disclosure — location + date only, no full statement."""
+    when = stmt.time_of_incident or stmt.created_at
+    return (
+        f"Reference {stmt.ref_code}. Status: {stmt.status}. "
+        f"Location on record: {stmt.location or 'not set'}. "
+        f"Incident time on record: {when}."
     )
 
 
-def spoken_case_status(case_id: str, status: str, title: Optional[str] = None) -> str:
-    title_bit = f" titled {title}" if title else ""
-    mapping = {
-        "open": f"Case {case_id}{title_bit} is open and awaiting investigation.",
-        "in_progress": f"Case {case_id}{title_bit} is currently in progress.",
-        "statement_pending": (
-            f"Case {case_id}{title_bit} is awaiting witness statement confirmation."
-        ),
-        "closed": f"Case {case_id}{title_bit} is closed.",
+def delay_flags(days: Optional[int]) -> Dict[str, Any]:
+    if days is None:
+        return {"delayed_statement_high_risk": False}
+    return {
+        "statement_delay_days": days,
+        "delayed_statement_high_risk": days > 30,
     }
-    return mapping.get(status, f"Case {case_id} status is {status}.")
-
-
-def merge_structured(
-    base: StructuredStatement,
-    incoming: StructuredStatement,
-) -> StructuredStatement:
-    data = base.model_dump()
-    new = incoming.model_dump()
-    for key, value in new.items():
-        if value in ("", None, [], {}):
-            continue
-        data[key] = value
-    return StructuredStatement.model_validate(data)

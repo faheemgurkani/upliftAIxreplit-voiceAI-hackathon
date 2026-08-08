@@ -1,86 +1,70 @@
 # Gawah Backend
 
-FastAPI backend for **Gawah** — multilingual voice witness statements (Urdu / Punjabi / Pashto) with Vapi webhooks, LLM structuring, and printable PDFs.
+FastAPI implementation of the full Gawah specification:
 
-## Stack
+- Uplift AI Realtime Assistants + TTS/STT (Singapore region)
+- Five CrPC §161 tool handlers
+- Section 16 consistency engine (realtime + post-call)
+- Section 17 multi-witness corroboration + collusion warning
+- Witness protection referral generation
+- KPI / ROI proxies + edge-case coverage metrics
+- NGO lawyer dashboard APIs
 
-| Layer | Choice |
-|-------|--------|
-| API | FastAPI |
-| LLM | OpenAI (`gpt-4o`) |
-| Voice orchestration | Vapi server webhooks |
-| STT/TTS hooks | Uplift AI Orator |
-| DB | Supabase (or local JSON for offline demo) |
-| PDF | ReportLab |
-| Deploy | Railway (recommended) / Vercel Python |
-
-## Quick start
+## Run
 
 ```bash
-# from repo root — use project venv
-source ../.venv/bin/activate   # or: source .venv/bin/activate from repo root
-cd gawah-backend
+# from repo root
+source .venv/bin/activate
+.venv/bin/pip install -r gawah-backend/requirements.txt
+cp gawah-backend/.env.example gawah-backend/.env
 
-../.venv/bin/pip install -r requirements.txt
-cp .env.example .env
-
-../.venv/bin/uvicorn app.main:app --reload --port 8000
+.venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --port 8000
 ```
 
-Open docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+Docs: http://localhost:8000/docs
 
-## Endpoints
-
-### Vapi (`/vapi`)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/vapi/call-started` | Init session + case |
-| POST | `/vapi/transcript` | Structure transcript + readback |
-| POST | `/vapi/call-ended` | Finalize statement |
-| POST | `/vapi/confirmation` | Witness voice confirmation |
-| POST | `/vapi/webhook` | Native Vapi `{ "message": ... }` envelope |
-
-Point Vapi `assistant.server.url` to `https://<host>/vapi/webhook`.
-
-### Statements (`/statements`)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/statements/list` | Paginated list |
-| GET | `/statements/{case_id}` | Latest statement for case |
-| GET | `/statements/by-id/{statement_id}` | Fetch by id |
-| POST | `/statements/generate-pdf` | Printable PDF |
-| PUT | `/statements/{statement_id}/confirm` | Officer confirm |
-
-### Cases (`/cases`)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/cases/create` | Create case reference |
-| GET | `/cases/{case_id}` | Fetch case |
-| GET | `/cases/{case_id}/status` | Spoken status for Vapi readback |
-
-## Database
-
-1. **Local JSON (default)** — no keys needed. Store at `data/gawah_store.json`.
-2. **Supabase** — set `SUPABASE_URL` + `SUPABASE_KEY`, then run `sql/schema.sql` in the Supabase SQL editor.
-
-## Environment
-
-See `.env.example`. Without `OPENAI_API_KEY`, the LLM service uses a deterministic heuristic so webhooks still work for demos.
-
-## Deploy
-
-### Railway (recommended for voice webhooks)
+## Smoke test
 
 ```bash
-# set root directory to gawah-backend
-# start command is in Procfile / railway.toml
+.venv/bin/python gawah-backend/scripts/smoke_test.py
 ```
 
-### Vercel
+## Key routes
 
-Set project Root Directory to `gawah-backend`. `vercel.json` configures `app/main.py` with `maxDuration: 60`.
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/sessions/create` | Uplift createSession (demo fallback if no key) |
+| POST | `/api/sessions/twilio-webhook` | PSTN TwiML stub |
+| POST | `/api/tools/save_witness_statement` | Save + TTS readback + queue engines |
+| POST | `/api/tools/flag_inconsistency` | Realtime §16 flag |
+| POST | `/api/tools/flag_intimidation` | Urgent escalation + NGO webhook |
+| POST | `/api/tools/enable_privacy_mode` | Anonymous mode |
+| POST | `/api/tools/assess_protection_need` | Protection referral |
+| POST | `/api/tools/confirm_statement` | Voice confirmation (no thumbprint) |
+| GET | `/api/statements/{refCode}` | Statement detail |
+| POST | `/api/statements/{refCode}/review` | Officer/NGO review |
+| GET | `/api/statements/{refCode}/audio` | Readback MP3 |
+| GET | `/api/dashboard/statements` | Filterable list |
+| GET | `/api/dashboard/clusters` | Incident clusters |
+| GET | `/api/dashboard/clusters/{id}` | Corroboration map |
+| POST | `/api/internal/trigger-corroboration-analysis` | Queue §16/§17 |
+| GET | `/api/kpis` | KPIs + edge-case coverage + ROI proxies |
 
-> For sub-500ms webhook latency under load, prefer Railway over Vercel Python cold starts.
+## Uplift AI usage
+
+1. Set `UPLIFTAI_API_KEY` (Singapore base URL default).
+2. Optionally set `UPLIFT_ASSISTANT_ID`, or let `ensure_assistant()` create one with full agent instructions + tools from `app/prompts/`.
+3. Frontend/demo calls `/api/sessions/create` → receives `token` + `wsUrl` for `@upliftai/assistants-react`.
+4. Tool invocations from the agent hit `/api/tools/*`.
+5. Readback audio via `POST /v1/synthesis/text-to-speech` (voice `ai_lwr_f_fb`).
+
+Phone calling: only on `https://ap-southeast-1.api.upliftai.org/v1` — see `UpliftService.place_call`.
+
+## KPIs / edge cases
+
+`GET /api/kpis` returns operational KPIs plus:
+
+- `roi_proxies` — literacy barrier removed, informed consent rate, protection pipeline, lawyer crossref savings
+- `edge_case_coverage` — intimidation, privacy, inconsistency, delay doctrine, incomplete recovery, multi-witness, language access, protection
+
+Corroboration disclaimer (always): *Pre-litigation intelligence only — not admissible corroboration under CrPC Section 162.*

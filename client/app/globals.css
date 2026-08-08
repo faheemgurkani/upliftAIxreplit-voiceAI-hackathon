@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-deep: #0a1210;
+  --bg-mid: #12201a;
+  --accent: #d4a84b;
+  --mist: #e4ebe6;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--mist);
+  background:
+    radial-gradient(ellipse 80% 60% at 10% -10%, rgba(79, 125, 92, 0.28), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 0%, rgba(212, 168, 75, 0.12), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(30, 58, 47, 0.55), transparent 60%),
+    linear-gradient(165deg, #0a1210 0%, #12201a 45%, #0f1c18 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+
+main {
+  position: relative;
+  z-index: 1;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .glass-panel {
+    @apply border border-white/10 bg-ink-900/60 backdrop-blur-md;
+  }
+
+  .interactive-row {
+    @apply transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-brass-400/40 hover:bg-ink-800/80;
+  }
+}
