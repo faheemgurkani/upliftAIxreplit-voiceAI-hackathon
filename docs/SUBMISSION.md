@@ -30,3 +30,7 @@ Use this before final hackathon submission.
 ## Judge notes (optional)
 
 What should judges notice first? What trade-offs did we make?
+
+## Pakistan live verification
+
+See [`PAKISTAN_LIVE_VERIFICATION_REPORT.md`](./PAKISTAN_LIVE_VERIFICATION_REPORT.md) — live probe **21/21 passed** (Uplift + OpenRouter + tools/engines/dashboard), mapped to CrPC §§161–162 and Punjab WPA 2018 demo claims.

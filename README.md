@@ -71,6 +71,10 @@ See [`.env.example`](./.env.example) for required keys. Never commit real secret
 |------|------|--------|
 | TBD  | TBD  | TBD    |
 
+## Pakistan live verification
+
+Live stack probe: **21/21 passed**. Report: [`docs/PAKISTAN_LIVE_VERIFICATION_REPORT.md`](./docs/PAKISTAN_LIVE_VERIFICATION_REPORT.md) (raw: `gawah-backend/data/live_probe_results.json`).
+
 ## Compliance (future work)
 
 Hackathon MVP is **not** claiming full statutory privacy certification. Post-demo integration targets:
