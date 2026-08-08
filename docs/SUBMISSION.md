@@ -1,0 +1,32 @@
+# Submission Checklist
+
+Use this before final hackathon submission.
+
+## Required
+
+- [ ] Project name and one-line pitch
+- [ ] Working demo (local and/or deployed)
+- [ ] README with setup + demo instructions
+- [ ] Team member names and roles
+- [ ] Demo video / screen recording
+- [ ] Repo linked / submitted per hackathon rules
+
+## Nice to have
+
+- [ ] Architecture diagram
+- [ ] Short pitch deck (`assets/pitch/`)
+- [ ] Known limitations listed honestly
+- [ ] Future roadmap (3–5 bullets)
+
+## Links
+
+| Item | URL |
+|------|-----|
+| Repo | _TBD_ |
+| Live demo | _TBD_ |
+| Demo video | _TBD_ |
+| Pitch deck | _TBD_ |
+
+## Judge notes (optional)
+
+What should judges notice first? What trade-offs did we make?

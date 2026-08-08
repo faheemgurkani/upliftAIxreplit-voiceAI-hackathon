@@ -1,0 +1,15 @@
+{
+  "name": "uplift-ai-replit-voiceai-hackathon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Uplift AI × Replit Voice AI Hackathon project",
+  "scripts": {
+    "dev": "echo \"Wire client + server start scripts once the stack is chosen.\"",
+    "start": "echo \"Wire production start once the stack is chosen.\"",
+    "test": "echo \"No tests yet\" && exit 0",
+    "check-env": "bash scripts/check-env.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
