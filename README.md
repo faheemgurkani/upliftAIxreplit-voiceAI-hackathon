@@ -71,6 +71,17 @@ See [`.env.example`](./.env.example) for required keys. Never commit real secret
 |------|------|--------|
 | TBD  | TBD  | TBD    |
 
+## Compliance (future work)
+
+Hackathon MVP is **not** claiming full statutory privacy certification. Post-demo integration targets:
+
+- **CrPC 1898 §§161–162** (how statements are taken/used)
+- **Personal Data Protection Bill 2023** / forthcoming PDPA (latest draft track; not yet enacted as of Aug 2026)
+- **PTA / PECA** consent & anti-spam for phone calling
+- **National AI Policy 2025** (soft guidance)
+
+Details: [`docs/COMPLIANCE_FUTURE_WORK.md`](./docs/COMPLIANCE_FUTURE_WORK.md).
+
 ## License
 
 See [LICENSE](./LICENSE).

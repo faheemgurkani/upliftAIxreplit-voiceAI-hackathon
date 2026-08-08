@@ -1106,6 +1106,7 @@ gawah/
 | KPK witness protection gap | KPK has no dedicated witness protection act. Detect KPK offences and flag explicitly for federal referral. |
 | Cross-examination simulation | After a statement is filed, agent calls witness back and role-plays hostile cross-examination on flagged inconsistencies. Same infra, prompt-only change. |
 | Semantic deduplication of incident clusters | Current clustering uses temporal+spatial+keyword heuristics. Future: fine-tuned NLI model to merge clusters where descriptions semantically refer to the same event despite different phrasing. |
+| **Compliance integration pack** | See [`docs/COMPLIANCE_FUTURE_WORK.md`](./COMPLIANCE_FUTURE_WORK.md): CrPC §§161–162 product truth; **PDPB 2023 / forthcoming PDPA** privacy readiness; PTA/PECA call consent; National AI Policy 2025 soft governance. Stub: `gawah-backend/app/services/compliance_service.py`. |
 
 ---
 

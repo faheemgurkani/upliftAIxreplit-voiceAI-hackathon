@@ -68,3 +68,9 @@ Phone calling: only on `https://ap-southeast-1.api.upliftai.org/v1` — see `Upl
 - `edge_case_coverage` — intimidation, privacy, inconsistency, delay doctrine, incomplete recovery, multi-witness, language access, protection
 
 Corroboration disclaimer (always): *Pre-litigation intelligence only — not admissible corroboration under CrPC Section 162.*
+
+## Compliance (future work)
+
+Not active in MVP. See [`../docs/COMPLIANCE_FUTURE_WORK.md`](../docs/COMPLIANCE_FUTURE_WORK.md) and stub `app/services/compliance_service.py`.
+
+Primary future targets: **CrPC §§161–162**, **PDPB 2023 / PDPA draft readiness**, **PTA/PECA call consent**, **National AI Policy 2025**.

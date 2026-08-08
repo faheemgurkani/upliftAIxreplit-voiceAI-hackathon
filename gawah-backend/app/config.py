@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     upliftai_api_key: str = ""
     uplift_assistant_id: str = ""
     uplift_base_url: str = "https://ap-southeast-1.api.upliftai.org/v1"
-    uplift_tts_voice_id: str = "v_8eelc901"
+    uplift_tts_voice_id: str = "v_8eelc901"  # verified working on Singapore TTS
     uplift_tts_output_format: str = "MP3_22050_128"
 
     # OpenRouter (primary LLM)
