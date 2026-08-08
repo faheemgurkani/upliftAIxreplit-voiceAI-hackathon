@@ -1,23 +1,94 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.db.database import Database, get_db
 from app.services.call_tracker import (
     ACTIVE_STATES,
+    TERMINAL_STATES,
     human_label,
     index_remote_sessions,
     merge_uplift_session,
     normalize_call_status,
+    persistable_fields,
 )
 from app.services.phone_utils import CALL_INSTRUCTIONS, normalize_pakistan_phone
 from app.services.uplift_service import UpliftService, get_uplift_service
+
+
+async def _sync_one_call(
+    *,
+    call_id: str,
+    local: Dict[str, Any],
+    remote: Optional[Dict[str, Any]],
+    uplift: UpliftService,
+    db: Database,
+    fetch_detail: bool = True,
+) -> Dict[str, Any]:
+    """Merge list/detail Uplift data into a tracked call and persist artifacts."""
+    # Local-only failure stubs (dispatch errors) have no Uplift session to fetch.
+    if str(call_id).startswith("failed-"):
+        status = local.get("status") or local.get("state") or "failed"
+        if status in {"unknown", ""}:
+            status = "failed"
+        repaired = {
+            **local,
+            "call_id": call_id,
+            "status": status,
+            "state": local.get("state") or "failed",
+            "label": local.get("label")
+            or human_label(status, local.get("outcome") or "dispatch_error"),
+            "mocked": bool(local.get("mocked", False)),
+            "artifacts_available": False,
+            "artifacts_status": "n/a",
+        }
+        db.upsert_call(persistable_fields(repaired))
+        return repaired
+
+    remote_payload = dict(remote or {})
+    artifacts = None
+
+    status_hint = (remote_payload.get("state") or local.get("status") or "").lower()
+    needs_detail = fetch_detail and (
+        status_hint in TERMINAL_STATES
+        or (local.get("status") or "").lower() in TERMINAL_STATES
+        or not local.get("duration_sec")
+        or not local.get("artifacts_status")
+        or local.get("artifacts_status") == "pending_or_unavailable"
+    )
+
+    if needs_detail and uplift.enabled:
+        enriched = await uplift.enrich_call_from_uplift(
+            call_id,
+            download=not bool(local.get("local_recording_path")),
+        )
+        if enriched.get("ok"):
+            remote_payload = {**remote_payload, **(enriched.get("session") or {})}
+            artifacts = enriched.get("artifacts")
+
+    if not remote_payload:
+        status = local.get("status") or local.get("state") or "unknown"
+        return {
+            **local,
+            "call_id": call_id,
+            "status": status,
+            "label": local.get("label")
+            or human_label(status, local.get("outcome")),
+            "mocked": bool(local.get("mocked", False)),
+        }
+
+    merged = merge_uplift_session(local, remote_payload, artifacts=artifacts)
+    merged["call_id"] = call_id
+    db.upsert_call(persistable_fields(merged))
+    return merged
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -165,11 +236,11 @@ async def place_phone_call(
 @router.get("/calls")
 async def list_phone_calls(
     limit: int = Query(25, ge=1, le=100),
-    sync: bool = Query(True, description="Refresh status from Uplift sessions"),
+    sync: bool = Query(True, description="Refresh status + artifacts from Uplift"),
     uplift: UpliftService = Depends(get_uplift_service),
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Tracked calls with live Uplift status sync for the dashboard."""
+    """Tracked calls with live Uplift status / metadata sync for the dashboard."""
     local = db.list_calls(limit=limit)
     remote_index: Dict[str, Dict[str, Any]] = {}
     sync_error = None
@@ -181,7 +252,6 @@ async def list_phone_calls(
             # Upsert any telephony sessions we don't have locally yet
             for sid, item in remote_index.items():
                 if item.get("channel") != "telephony" and item.get("direction") != "outbound":
-                    # still allow telephony-marked or toNumber present
                     if not item.get("toNumber"):
                         continue
                 if not db.get_call(sid):
@@ -201,6 +271,9 @@ async def list_phone_calls(
                             "outcome": item.get("outcome"),
                             "failure_reason": item.get("failureReason"),
                             "connected": item.get("connected"),
+                            "duration_sec": item.get("durationSec"),
+                            "ended_at": item.get("endedAt"),
+                            "ended_by": item.get("endedBy"),
                             "channel": item.get("channel") or "phone_outbound",
                             "direction": item.get("direction") or "outbound",
                             "mocked": False,
@@ -220,25 +293,29 @@ async def list_phone_calls(
             sync_error = remote.get("detail")
 
     items = []
+    # Detail-fetch only for terminal/recent rows to stay polite on Uplift rate limits
+    detail_budget = 8
     for call in local:
-        cid = call.get("call_id")
-        remote = remote_index.get(str(cid)) if cid else None
-        if remote:
-            merged = merge_uplift_session(call, remote)
-            db.upsert_call(
-                {
-                    "call_id": cid,
-                    "status": merged.get("status"),
-                    "state": merged.get("state"),
-                    "outcome": merged.get("outcome"),
-                    "failure_reason": merged.get("failure_reason"),
-                    "connected": merged.get("connected"),
-                    "to": merged.get("to"),
-                    "from_number": merged.get("from_number"),
-                    "label": merged.get("label"),
-                    "mocked": False,
-                }
+        cid = str(call.get("call_id") or "")
+        if not cid:
+            continue
+        remote = remote_index.get(cid)
+        if sync and uplift.enabled and (remote or call.get("status") in TERMINAL_STATES):
+            use_detail = detail_budget > 0
+            if use_detail:
+                detail_budget -= 1
+            merged = await _sync_one_call(
+                call_id=cid,
+                local=call,
+                remote=remote,
+                uplift=uplift,
+                db=db,
+                fetch_detail=use_detail,
             )
+            items.append(merged)
+        elif remote:
+            merged = merge_uplift_session(call, remote)
+            db.upsert_call(persistable_fields({**merged, "call_id": cid}))
             items.append(merged)
         else:
             status = call.get("status") or call.get("state") or "unknown"
@@ -257,6 +334,7 @@ async def list_phone_calls(
         "active": sum(1 for i in items if (i.get("status") or "").lower() in ACTIVE_STATES),
         "completed": sum(1 for i in items if (i.get("status") or "").lower() == "completed"),
         "failed": sum(1 for i in items if (i.get("status") or "").lower() == "failed"),
+        "with_artifacts": sum(1 for i in items if i.get("artifacts_available")),
     }
 
     return {
@@ -265,6 +343,10 @@ async def list_phone_calls(
         "sync_error": sync_error,
         "counts": counts,
         "items": items,
+        "note": (
+            "Uplift session metadata is always synced. Recording/transcript URLs are "
+            "captured when the platform exposes them (docs: async after call ends)."
+        ),
     }
 
 
@@ -275,10 +357,15 @@ async def get_phone_call(
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
     local = db.get_call(call_id)
-    remote = await uplift.list_call_sessions(limit=30)
     remote_item = None
-    if remote.get("ok"):
-        remote_item = index_remote_sessions(remote.get("items") or []).get(call_id)
+    if uplift.enabled:
+        detail = await uplift.get_session(call_id)
+        if detail.get("ok"):
+            remote_item = detail.get("session")
+        else:
+            remote = await uplift.list_call_sessions(limit=30)
+            if remote.get("ok"):
+                remote_item = index_remote_sessions(remote.get("items") or []).get(call_id)
 
     if local is None and remote_item is None:
         raise HTTPException(status_code=404, detail="Call not found")
@@ -288,32 +375,81 @@ async def get_phone_call(
         "to": remote_item.get("toNumber") if remote_item else None,
         "mocked": False,
     }
-    if remote_item:
-        merged = merge_uplift_session(base, remote_item)
-        db.upsert_call(
-            {
-                "call_id": call_id,
-                "status": merged.get("status"),
-                "state": merged.get("state"),
-                "outcome": merged.get("outcome"),
-                "failure_reason": merged.get("failure_reason"),
-                "connected": merged.get("connected"),
-                "to": merged.get("to"),
-                "from_number": merged.get("from_number"),
-                "label": merged.get("label"),
-                "mocked": False,
-            }
-        )
-        return {"ok": True, "mocked": False, "item": merged}
+    merged = await _sync_one_call(
+        call_id=call_id,
+        local=base,
+        remote=remote_item,
+        uplift=uplift,
+        db=db,
+        fetch_detail=True,
+    )
+    return {"ok": True, "mocked": False, "item": merged}
+
+
+@router.post("/calls/{call_id}/refresh-artifacts")
+async def refresh_call_artifacts(
+    call_id: str,
+    uplift: UpliftService = Depends(get_uplift_service),
+    db: Database = Depends(get_db),
+) -> Dict[str, Any]:
+    """Force re-fetch of Uplift session detail + recording/transcript if present."""
+    local = db.get_call(call_id) or {"call_id": call_id, "mocked": False}
+    if not uplift.enabled:
+        raise HTTPException(status_code=503, detail="Uplift not configured")
+    merged = await _sync_one_call(
+        call_id=call_id,
+        local=local,
+        remote=None,
+        uplift=uplift,
+        db=db,
+        fetch_detail=True,
+    )
     return {
         "ok": True,
-        "mocked": bool(base.get("mocked", False)),
-        "item": {
-            **base,
-            "label": base.get("label")
-            or human_label(base.get("status") or "unknown", base.get("outcome")),
-        },
+        "mocked": False,
+        "item": merged,
+        "artifacts_status": merged.get("artifacts_status"),
+        "artifacts_available": merged.get("artifacts_available"),
     }
+
+
+@router.get("/calls/{call_id}/recording")
+async def get_call_recording(
+    call_id: str,
+    db: Database = Depends(get_db),
+) -> Any:
+    """Serve a locally cached call recording downloaded from Uplift (if any)."""
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    path_str = call.get("local_recording_path")
+    if path_str:
+        path = Path(path_str)
+        if path.is_file():
+            media = "audio/mpeg"
+            if path.suffix == ".wav":
+                media = "audio/wav"
+            elif path.suffix == ".ogg":
+                media = "audio/ogg"
+            return FileResponse(path, media_type=media, filename=f"{call_id}-recording{path.suffix}")
+
+    if call.get("recording_url"):
+        return {
+            "ok": True,
+            "available": True,
+            "recording_url": call.get("recording_url"),
+            "local_cached": False,
+            "message": "Recording URL known but not cached locally — open recording_url.",
+        }
+
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            "No call recording available yet. Uplift may still be generating it, "
+            "or this org's API does not expose recording URLs."
+        ),
+    )
 
 
 @router.post("/twilio-webhook")

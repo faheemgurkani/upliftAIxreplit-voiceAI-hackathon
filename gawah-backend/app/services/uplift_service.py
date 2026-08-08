@@ -1,12 +1,35 @@
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import Settings, get_settings
 from app.prompts.agent_config import GAWAH_ASSISTANT_CONFIG
+
+# Field names Uplift may use when recordings/transcripts appear asynchronously.
+_RECORDING_KEYS = (
+    "recordingUrl",
+    "recording_url",
+    "recording",
+    "audioUrl",
+    "audio_url",
+    "mediaUrl",
+    "media_url",
+    "callRecordingUrl",
+    "call_recording_url",
+)
+_TRANSCRIPT_KEYS = (
+    "transcript",
+    "transcriptText",
+    "transcript_text",
+    "transcription",
+    "conversationTranscript",
+)
+_ANALYSIS_KEYS = ("analysis", "summary", "callAnalysis", "call_analysis")
 
 
 class UpliftService:
@@ -259,6 +282,192 @@ class UpliftService:
             data = response.json()
             items = data if isinstance(data, list) else data.get("sessions") or data.get("items") or []
             return {"ok": True, "assistantId": assistant_id, "items": items, "raw": data}
+
+    async def get_session(self, session_id: str) -> Dict[str, Any]:
+        """
+        Fetch a single realtime session (call) by id.
+
+        Documented path (verified live):
+        GET /v1/realtime-assistants/sessions/{sessionId}
+        """
+        if not self.enabled:
+            return {"ok": False, "detail": "Uplift not configured"}
+        if not session_id or str(session_id).startswith("failed-"):
+            return {"ok": False, "detail": "Invalid session id"}
+
+        url = (
+            f"{self.settings.uplift_base_url.rstrip('/')}"
+            f"/realtime-assistants/sessions/{session_id}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self._headers())
+                if response.status_code >= 400:
+                    return {
+                        "ok": False,
+                        "status_code": response.status_code,
+                        "detail": response.text,
+                    }
+                data = response.json()
+                artifacts = self.extract_session_artifacts(data)
+                return {"ok": True, "session": data, "artifacts": artifacts}
+        except httpx.HTTPError as exc:
+            return {"ok": False, "status_code": 502, "detail": str(exc)}
+
+    @staticmethod
+    def _first_urlish(value: Any) -> Optional[str]:
+        if isinstance(value, str) and value.startswith(("http://", "https://")):
+            return value
+        if isinstance(value, dict):
+            for key in (
+                "url",
+                "href",
+                "downloadUrl",
+                "download_url",
+                "signedUrl",
+                "signed_url",
+                "recordingUrl",
+                "recording_url",
+            ):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                    return candidate
+        return None
+
+    @classmethod
+    def extract_session_artifacts(cls, session: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Pull recording / transcript / analysis if Uplift attached them.
+
+        Hackathon docs note these are generated asynchronously after the call
+        ends; nested /recording|/transcript routes currently 404, so we scan
+        the session payload (and common nested bags) defensively.
+        """
+        bags: List[Dict[str, Any]] = [session]
+        for nest in ("artifacts", "media", "recording", "analysis", "data", "result"):
+            nested = session.get(nest)
+            if isinstance(nested, dict):
+                bags.append(nested)
+
+        recording_url = None
+        transcript: Any = None
+        analysis: Any = None
+
+        for bag in bags:
+            if recording_url is None:
+                for key in _RECORDING_KEYS:
+                    if key in bag:
+                        recording_url = cls._first_urlish(bag.get(key)) or recording_url
+                        if recording_url:
+                            break
+            if transcript is None:
+                for key in _TRANSCRIPT_KEYS:
+                    if bag.get(key) not in (None, "", []):
+                        transcript = bag.get(key)
+                        break
+            if analysis is None:
+                for key in _ANALYSIS_KEYS:
+                    if bag.get(key) not in (None, "", []):
+                        analysis = bag.get(key)
+                        break
+
+        if isinstance(transcript, dict):
+            transcript = (
+                transcript.get("text")
+                or transcript.get("transcript")
+                or transcript.get("content")
+                or transcript
+            )
+
+        available = bool(recording_url or transcript or analysis)
+        return {
+            "recording_url": recording_url,
+            "transcript": transcript,
+            "analysis": analysis,
+            "artifacts_available": available,
+            "artifacts_status": "ready" if available else "pending_or_unavailable",
+        }
+
+    async def download_recording(
+        self,
+        call_id: str,
+        recording_url: str,
+    ) -> Dict[str, Any]:
+        """Download a remote recording URL into local_audio_dir/calls/{call_id}/."""
+        if not recording_url:
+            return {"ok": False, "detail": "No recording URL"}
+
+        dest_dir = Path(self.settings.local_audio_dir) / "calls" / call_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        parsed = urlparse(recording_url)
+        suffix = Path(parsed.path).suffix or ".mp3"
+        if suffix not in {".mp3", ".wav", ".ogg", ".m4a", ".webm"}:
+            suffix = ".mp3"
+        dest = dest_dir / f"recording{suffix}"
+
+        headers = {}
+        # Some signed URLs reject Authorization; only send for same-host Uplift APIs.
+        if "upliftai.org" in (parsed.netloc or ""):
+            headers["Authorization"] = f"Bearer {self.settings.upliftai_api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+                response = await client.get(recording_url, headers=headers)
+                if response.status_code >= 400:
+                    return {
+                        "ok": False,
+                        "status_code": response.status_code,
+                        "detail": response.text[:500],
+                    }
+                ctype = response.headers.get("content-type", "")
+                if "audio" in ctype or "octet" in ctype or len(response.content) > 1000:
+                    guessed = mimetypes.guess_extension(ctype.split(";")[0].strip()) if ctype else None
+                    if guessed and guessed in {".mp3", ".wav", ".ogg", ".m4a", ".webm"}:
+                        dest = dest_dir / f"recording{guessed}"
+                    dest.write_bytes(response.content)
+                    return {
+                        "ok": True,
+                        "local_path": str(dest),
+                        "bytes": len(response.content),
+                        "content_type": ctype or "audio/mpeg",
+                    }
+                return {
+                    "ok": False,
+                    "detail": f"Unexpected content-type: {ctype}",
+                    "preview": response.text[:200],
+                }
+        except httpx.HTTPError as exc:
+            return {"ok": False, "detail": str(exc)}
+
+    async def enrich_call_from_uplift(
+        self,
+        call_id: str,
+        *,
+        download: bool = True,
+    ) -> Dict[str, Any]:
+        """Fetch session detail + optional recording download for a tracked call."""
+        detail = await self.get_session(call_id)
+        if not detail.get("ok"):
+            return detail
+        session = detail["session"]
+        artifacts = detail.get("artifacts") or self.extract_session_artifacts(session)
+        local_path = None
+        if download and artifacts.get("recording_url"):
+            saved = await self.download_recording(call_id, artifacts["recording_url"])
+            if saved.get("ok"):
+                local_path = saved.get("local_path")
+                artifacts["local_recording_path"] = local_path
+                artifacts["artifacts_status"] = "downloaded"
+            else:
+                artifacts["download_error"] = saved.get("detail")
+                artifacts["artifacts_status"] = "url_only"
+        return {
+            "ok": True,
+            "session": session,
+            "artifacts": artifacts,
+            "local_recording_path": local_path,
+        }
 
 
 _uplift: UpliftService | None = None

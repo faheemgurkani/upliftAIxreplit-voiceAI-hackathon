@@ -46,7 +46,12 @@ curl -X POST http://localhost:8000/api/sessions/call \
   -d '{"to":"+923001234567","participantName":"Witness"}'
 ```
 
-Poll status: `GET /api/sessions/calls`
+Poll status + Uplift session metadata: `GET /api/sessions/calls`
+
+Force pull recording/transcript (when Uplift exposes them):
+`POST /api/sessions/calls/{callId}/refresh-artifacts`
+
+Cached recording (if downloaded): `GET /api/sessions/calls/{callId}/recording`
 
 ### Receive a call (witness dials in)
 
@@ -68,7 +73,10 @@ Only call numbers that consent (your phone / teammates). PTA + Uplift terms forb
 |--------|------|---------|
 | POST | `/api/sessions/create` | Uplift createSession (demo fallback if no key) |
 | POST | `/api/sessions/call` | Outbound PSTN call via Uplift (`to` = PK mobile) |
-| GET | `/api/sessions/calls` | Poll recent call / session states |
+| GET | `/api/sessions/calls` | Poll calls + sync Uplift session metadata/artifacts |
+| GET | `/api/sessions/calls/{id}` | Single call detail (fetches Uplift session) |
+| POST | `/api/sessions/calls/{id}/refresh-artifacts` | Re-fetch recording/transcript if available |
+| GET | `/api/sessions/calls/{id}/recording` | Locally cached call recording |
 | POST | `/api/sessions/twilio-webhook` | Inbound Twilio → Uplift callback TwiML |
 | POST | `/api/tools/save_witness_statement` | Save + TTS readback + queue engines |
 | POST | `/api/tools/flag_inconsistency` | Realtime §16 flag |
