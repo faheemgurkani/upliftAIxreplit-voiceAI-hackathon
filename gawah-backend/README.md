@@ -29,12 +29,47 @@ Docs: http://localhost:8000/docs
 .venv/bin/python gawah-backend/scripts/smoke_test.py
 ```
 
+## Phone calling (report an incident by PSTN)
+
+Uplift AI places **outbound** calls to Pakistani mobiles only (Singapore region). You do **not** need your own caller ID.
+
+### Call me (easiest)
+
+1. Backend running with `UPLIFTAI_API_KEY` and `UPLIFT_BASE_URL=https://ap-southeast-1.api.upliftai.org/v1`
+2. Open frontend **Demo → Phone call**, enter `+92…` / `03…`, click **Call me**
+3. Answer the phone — Gawah runs the §161 interview
+4. Or via API:
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/call \
+  -H 'Content-Type: application/json' \
+  -d '{"to":"+923001234567","participantName":"Witness"}'
+```
+
+Poll status: `GET /api/sessions/calls`
+
+### Receive a call (witness dials in)
+
+Uplift does not expose inbound DIDs. Pattern used here:
+
+1. Buy/configure a **Twilio** Pakistani (or reachable) number
+2. Expose your API publicly (`ngrok http 8000`)
+3. Set the number’s Voice webhook to `POST https://<public>/api/sessions/twilio-webhook`
+4. Set `TWILIO_*` in `.env` (optional metadata)
+5. Witness dials Twilio → TwiML greets them → we **call them back** via Uplift with the Gawah agent
+
+Full Twilio Media Streams ↔ WebRTC bridge is still deferred; callback is the hackathon-ready receive path.
+
+Only call numbers that consent (your phone / teammates). PTA + Uplift terms forbid spam.
+
 ## Key routes
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/sessions/create` | Uplift createSession (demo fallback if no key) |
-| POST | `/api/sessions/twilio-webhook` | PSTN TwiML stub |
+| POST | `/api/sessions/call` | Outbound PSTN call via Uplift (`to` = PK mobile) |
+| GET | `/api/sessions/calls` | Poll recent call / session states |
+| POST | `/api/sessions/twilio-webhook` | Inbound Twilio → Uplift callback TwiML |
 | POST | `/api/tools/save_witness_statement` | Save + TTS readback + queue engines |
 | POST | `/api/tools/flag_inconsistency` | Realtime §16 flag |
 | POST | `/api/tools/flag_intimidation` | Urgent escalation + NGO webhook |

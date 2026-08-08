@@ -192,7 +192,13 @@ class UpliftService:
         assistant = await self.ensure_assistant()
         assistant_id = assistant.get("assistantId") or self.settings.uplift_assistant_id
         if not self.enabled or not assistant_id:
-            return {"ok": False, "detail": "Uplift calling not configured"}
+            return {
+                "ok": False,
+                "detail": (
+                    "Uplift calling not configured. Set UPLIFTAI_API_KEY and "
+                    "UPLIFT_BASE_URL=https://ap-southeast-1.api.upliftai.org/v1"
+                ),
+            }
 
         url = f"{self.settings.uplift_base_url.rstrip('/')}/calls"
         headers = self._headers()
@@ -204,16 +210,55 @@ class UpliftService:
         if variables:
             body["variables"] = variables
 
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, headers=headers, json=body)
+                if response.status_code >= 400:
+                    return {
+                        "ok": False,
+                        "status_code": response.status_code,
+                        "detail": response.text,
+                    }
+                data = response.json()
+                return {
+                    "ok": True,
+                    "callId": data.get("callId") or data.get("id"),
+                    "status": data.get("status", "dispatched"),
+                    "assistantId": assistant_id,
+                    "to": to,
+                    "raw": data,
+                }
+        except httpx.HTTPError as exc:
+            return {"ok": False, "status_code": 502, "detail": f"Uplift call request failed: {exc}"}
+
+    async def list_call_sessions(self, *, limit: int = 10) -> Dict[str, Any]:
+        """Poll recent realtime-assistant sessions (includes outbound call states)."""
+        assistant = await self.ensure_assistant()
+        assistant_id = assistant.get("assistantId") or self.settings.uplift_assistant_id
+        if not self.enabled or not assistant_id:
+            return {"ok": False, "items": [], "detail": "Uplift not configured"}
+
+        limit = max(1, min(limit, 50))
+        url = (
+            f"{self.settings.uplift_base_url.rstrip('/')}"
+            f"/realtime-assistants/{assistant_id}/sessions"
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, headers=headers, json=body)
+            response = await client.get(
+                url,
+                headers=self._headers(),
+                params={"limit": limit},
+            )
             if response.status_code >= 400:
                 return {
                     "ok": False,
+                    "items": [],
                     "status_code": response.status_code,
                     "detail": response.text,
                 }
             data = response.json()
-            return {"ok": True, **data}
+            items = data if isinstance(data, list) else data.get("sessions") or data.get("items") or []
+            return {"ok": True, "assistantId": assistant_id, "items": items, "raw": data}
 
 
 _uplift: UpliftService | None = None

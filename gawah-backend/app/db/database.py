@@ -53,6 +53,7 @@ class Database:
                     "statements": [],
                     "incident_clusters": [],
                     "sessions": [],
+                    "calls": [],
                     "kpi_events": [],
                 }
             )
@@ -63,6 +64,7 @@ class Database:
         data.setdefault("statements", [])
         data.setdefault("incident_clusters", [])
         data.setdefault("sessions", [])
+        data.setdefault("calls", [])
         data.setdefault("kpi_events", [])
         return data
 
@@ -354,6 +356,85 @@ class Database:
             store["sessions"].append(session)
             self._write_local(store)
         return session
+
+    def upsert_call(self, call: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or update a tracked outbound/inbound phone call by call_id."""
+        call_id = call.get("call_id") or call.get("callId")
+        if not call_id:
+            raise ValueError("call_id required")
+        now = _iso()
+        record = {
+            **call,
+            "call_id": call_id,
+            "updated_at": now,
+        }
+        record.setdefault("created_at", now)
+
+        if self._supabase is not None:
+            try:
+                self._supabase.table("calls").upsert(record).execute()
+            except Exception:
+                try:
+                    self._supabase.table("calls").insert(record).execute()
+                except Exception:
+                    pass
+            return record
+
+        with self._lock:
+            store = self._read_local()
+            calls = store["calls"]
+            idx = next(
+                (i for i, c in enumerate(calls) if c.get("call_id") == call_id),
+                None,
+            )
+            if idx is None:
+                calls.append(record)
+            else:
+                merged = {**calls[idx], **record}
+                merged["created_at"] = calls[idx].get("created_at") or record["created_at"]
+                calls[idx] = merged
+                record = merged
+            self._write_local(store)
+        return record
+
+    def list_calls(self, *, limit: int = 50) -> List[Dict[str, Any]]:
+        limit = max(1, min(limit, 100))
+        if self._supabase is not None:
+            try:
+                result = (
+                    self._supabase.table("calls")
+                    .select("*")
+                    .order("created_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                return result.data or []
+            except Exception:
+                return []
+        with self._lock:
+            calls = list(self._read_local()["calls"])
+            calls.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+            return calls[:limit]
+
+    def get_call(self, call_id: str) -> Optional[Dict[str, Any]]:
+        if self._supabase is not None:
+            try:
+                result = (
+                    self._supabase.table("calls")
+                    .select("*")
+                    .eq("call_id", call_id)
+                    .limit(1)
+                    .execute()
+                )
+                rows = result.data or []
+                return rows[0] if rows else None
+            except Exception:
+                return None
+        with self._lock:
+            for call in self._read_local()["calls"]:
+                if call.get("call_id") == call_id:
+                    return call
+        return None
 
     def record_kpi_event(self, event_type: str, meta: Optional[Dict[str, Any]] = None) -> None:
         event = {
