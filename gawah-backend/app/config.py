@@ -1,13 +1,25 @@
 from functools import lru_cache
-from typing import List
+from pathlib import Path
+from typing import List, Tuple
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def _env_files() -> Tuple[str, ...]:
+    files = []
+    for path in (_REPO_ROOT / ".env", _BACKEND_DIR / ".env"):
+        if path.exists():
+            files.append(str(path))
+    return tuple(files) or (".env",)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -21,10 +33,15 @@ class Settings(BaseSettings):
     upliftai_api_key: str = ""
     uplift_assistant_id: str = ""
     uplift_base_url: str = "https://ap-southeast-1.api.upliftai.org/v1"
-    uplift_tts_voice_id: str = "ai_lwr_f_fb"
+    uplift_tts_voice_id: str = "v_8eelc901"
     uplift_tts_output_format: str = "MP3_22050_128"
 
-    # Groq (LLM for structuring / consistency / corroboration)
+    # OpenRouter (primary LLM)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # Groq (optional fallback)
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
 
@@ -75,12 +92,20 @@ class Settings(BaseSettings):
         return bool(self.upliftai_api_key)
 
     @property
+    def openrouter_enabled(self) -> bool:
+        return bool(self.openrouter_api_key)
+
+    @property
     def groq_enabled(self) -> bool:
         return bool(self.groq_api_key)
 
     @property
     def llm_enabled(self) -> bool:
-        return self.groq_enabled or bool(self.openai_api_key)
+        return (
+            self.openrouter_enabled
+            or self.groq_enabled
+            or bool(self.openai_api_key)
+        )
 
 
 @lru_cache

@@ -68,6 +68,8 @@ async def health():
         "env": settings.app_env,
         "db_backend": db.backend,
         "uplift_configured": settings.uplift_enabled,
+        "openrouter_configured": settings.openrouter_enabled,
+        "openrouter_model": settings.openrouter_model if settings.openrouter_enabled else None,
         "groq_configured": settings.groq_enabled,
         "llm_enabled": settings.llm_enabled,
         "assistant_id_set": bool(settings.uplift_assistant_id),
