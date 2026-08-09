@@ -147,7 +147,7 @@ class UpliftService:
         agent["initialGreeting"] = True
         if not agent.get("greetingInstructions"):
             agent["greetingInstructions"] = (
-                "Assalam-u-Alaikum. Main Gawah hoon. "
+                "Assalam-u-Alaikum. Main Gawah system hoon — aap gawah hain. "
                 "Kya aap apna bayan dena chahte hain?"
             )
         # Prefer configured TTS voice (same as readback / Pakistan demos)

@@ -182,9 +182,9 @@ GAWAH_ASSISTANT_CONFIG = {
             "instructions": AGENT_INSTRUCTIONS,
             "initialGreeting": True,
             "greetingInstructions": (
-                "Assalam-u-Alaikum. Main Gawah hoon — ek digital gawahi darz karne ka nizam. "
-                "Aap jo kuch bhi bolen ga, woh mehfooz ho jaye ga. Koi bhi aap ki awaaz sun nahi "
-                "raha — sirf system record kar raha hai. Kya aap apna bayan dena chahte hain?"
+                "Assalam-u-Alaikum. Main Gawah system hoon — aap ka bayan sunne aur darz karne "
+                "wala digital nizam. Aap gawah hain; main sirf aap ki baat record karta hoon. "
+                "Jo aap bolenge woh mehfooz ho jaye ga. Kya aap apna bayan dena chahte hain?"
             ),
             "tools": GAWAH_TOOLS,
         },

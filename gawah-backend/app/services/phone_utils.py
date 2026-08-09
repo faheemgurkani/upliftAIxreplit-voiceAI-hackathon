@@ -40,6 +40,8 @@ def normalize_pakistan_phone(raw: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 CALL_INSTRUCTIONS = (
+    "ROLE: Aap examiner/recorder hain. Line par jo insan hai woh hamesha WITNESS hai. "
+    "Aap witness nahi hain — incident aap ne nahi dekha; bayan invent mat karein. "
     "Yeh call Gawah demo / live witness intake hai. "
     "Witness ne khud yeh call request ki hai ya Gawah number par dial kiya hai. "
     "Phase 0 caution (voluntariness + PDPA consent) pehle complete karein, "
@@ -51,6 +53,8 @@ CALL_INSTRUCTIONS = (
 # additionalInstructions on POST /calls). Never send this alone via client
 # updateInstruction — that REPLACES the full system prompt.
 WEB_CALL_INSTRUCTIONS = (
+    "ROLE: Aap Gawah system / examiner hain. Browser mein jo user hai woh WITNESS hai. "
+    "Kabhi bhi apne aap ko gawah mat samjhein; pehle shakhs mein crime story mat sunayein. "
     "Yeh browser / web call Gawah demo / live witness intake hai — phone call jaisi hi. "
     "Channel: web_browser (WebRTC). Witness ne khud demo se session shuru kiya hai. "
     "Phase 0 caution (voluntariness + PDPA consent) pehle complete karein, "
