@@ -196,6 +196,7 @@ def persistable_fields(merged: Dict[str, Any]) -> Dict[str, Any]:
         "created_at",
         "events",
         "ref_code",
+        "statement_pipeline_status",
         "participant_name",
         "assistant_id",
         "room_name",
