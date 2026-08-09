@@ -47,7 +47,9 @@ CALL_INSTRUCTIONS = (
     "Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein."
 )
 
-# Injected on web WebRTC connect via updateInstruction — mirrors phone CALL_INSTRUCTIONS.
+# Prepended onto agent.instructions for adhoc WebRTC sessions (phone uses
+# additionalInstructions on POST /calls). Never send this alone via client
+# updateInstruction — that REPLACES the full system prompt.
 WEB_CALL_INSTRUCTIONS = (
     "Yeh browser / web call Gawah demo / live witness intake hai — phone call jaisi hi. "
     "Channel: web_browser (WebRTC). Witness ne khud demo se session shuru kiya hai. "

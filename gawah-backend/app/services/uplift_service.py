@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -9,6 +10,7 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.prompts.agent_config import GAWAH_ASSISTANT_CONFIG
+from app.services.phone_utils import WEB_CALL_INSTRUCTIONS
 
 # Field names Uplift may use when recordings/transcripts appear asynchronously.
 _RECORDING_KEYS = (
@@ -125,6 +127,35 @@ class UpliftService:
             )
             return {"ok": True, "assistantId": assistant_id, "raw": data}
 
+    def _web_adhoc_config(self) -> Dict[str, Any]:
+        """
+        Full Gawah agent config for browser WebRTC, with phone-parity channel notes.
+
+        Phone uses additionalInstructions on POST /calls (additive).
+        Adhoc createSession has no additionalInstructions field — so we prepend
+        WEB_CALL_INSTRUCTIONS onto the base Phase 0–4 prompt here.
+
+        Do NOT replace instructions from the React client via updateInstruction:
+        that API replaces the entire system prompt and kills greeting + interview flow.
+        """
+        config = copy.deepcopy(GAWAH_ASSISTANT_CONFIG.get("config") or {})
+        agent = config.setdefault("agent", {})
+        base = (agent.get("instructions") or "").strip()
+        channel = WEB_CALL_INSTRUCTIONS.strip()
+        if channel and channel not in base:
+            agent["instructions"] = f"{channel}\n\n{base}" if base else channel
+        agent["initialGreeting"] = True
+        if not agent.get("greetingInstructions"):
+            agent["greetingInstructions"] = (
+                "Assalam-u-Alaikum. Main Gawah hoon. "
+                "Kya aap apna bayan dena chahte hain?"
+            )
+        # Prefer configured TTS voice (same as readback / Pakistan demos)
+        tts = config.setdefault("tts", {}).setdefault("default", {})
+        if self.settings.uplift_tts_voice_id:
+            tts["voiceId"] = self.settings.uplift_tts_voice_id
+        return config
+
     async def create_adhoc_web_session(
         self, participant_name: str = "Witness"
     ) -> Dict[str, Any]:
@@ -141,7 +172,7 @@ class UpliftService:
             f"{self.settings.uplift_base_url.rstrip('/')}"
             f"/realtime-assistants/adhoc/createSession"
         )
-        config = GAWAH_ASSISTANT_CONFIG.get("config") or {}
+        config = self._web_adhoc_config()
         body = {
             "participantName": participant_name,
             "config": config,

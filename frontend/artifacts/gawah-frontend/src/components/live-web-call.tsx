@@ -3,6 +3,8 @@ import {
   AudioTrack,
   BarVisualizer,
   DisconnectButton,
+  RoomAudioRenderer,
+  StartAudio,
   TrackToggle,
   UpliftAIRoom,
   useTracks,
@@ -13,19 +15,6 @@ import { Track } from 'livekit-client';
 import { buildGawahTools, type ToolEvent } from '@/lib/gawah-tools';
 import { postWebEvent } from '@/lib/api';
 
-/** Mirrors backend WEB_CALL_INSTRUCTIONS — injected on connect via updateInstruction. */
-const WEB_CHANNEL_INSTRUCTIONS = [
-  'Yeh browser / web call Gawah demo / live witness intake hai — phone call jaisi hi.',
-  'Channel: web_browser (WebRTC). Witness ne khud demo se session shuru kiya hai.',
-  'Phase 0 caution (voluntariness + PDPA consent) pehle complete karein,',
-  'phir CrPC Section 161 ke mutabiq 5 fields collect karein.',
-  'Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein.',
-  'Tools available: save_witness_statement, flag_inconsistency, flag_intimidation,',
-  'enable_privacy_mode, assess_protection_need, confirm_statement.',
-  "Readback ke baad jab witness 'haan' kahe to confirm_statement call karein,",
-  'phir reference code teen baar bolen.',
-].join(' ');
-
 interface Props {
   token: string;
   wsUrl: string;
@@ -35,27 +24,40 @@ interface Props {
   onEnded?: () => void;
 }
 
+/**
+ * Live WebRTC body.
+ *
+ * Important (Uplift docs):
+ * - updateInstruction() REPLACES the entire system prompt. Never use it to
+ *   inject a short "web channel" blurb — that wiped Phase 0–4 + greeting and
+ *   made the agent go silent vs phone (phone uses additive additionalInstructions).
+ * - Web channel notes are baked into adhoc createSession config on the backend.
+ * - Browser autoplay often blocks agent TTS until a user gesture → StartAudio.
+ */
 function CallBody({
   callId,
   onLog,
   onEnded,
+  tools,
 }: {
   callId: string;
   onLog: (line: string) => void;
   onEnded?: () => void;
+  tools: ReturnType<typeof buildGawahTools>;
 }) {
-  const { isConnected, agentParticipant, updateInstruction } = useUpliftAIRoom();
+  const { isConnected, agentParticipant, upsertTools } = useUpliftAIRoom();
   const { state, audioTrack } = useVoiceAssistant();
-  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: false });
-  const localMic = tracks.find((t) => t.participant.isLocal);
+  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
+  const agentMicTrack = tracks.find((t) => !t.participant.isLocal);
+  const playTrack = audioTrack || agentMicTrack;
   const connectedOnce = useRef(false);
-  const instructedOnce = useRef(false);
+  const toolsOnce = useRef(false);
   const lastState = useRef<string>('');
 
   useEffect(() => {
     if (isConnected && !connectedOnce.current) {
       connectedOnce.current = true;
-      onLog(`[${ts()}] Live web call connected — same Gawah agent as phone`);
+      onLog(`[${ts()}] Live web call connected — full Gawah agent (same as phone)`);
       void postWebEvent(callId, {
         type: 'webrtc_connected',
         detail: 'Uplift WebRTC room connected',
@@ -64,29 +66,35 @@ function CallBody({
     }
   }, [isConnected, callId, onLog]);
 
-  // Align web session behaviour with phone CALL_INSTRUCTIONS (Uplift updateInstruction)
+  // Ensure client tool handlers are registered (RPC runs in the browser).
   useEffect(() => {
-    if (!isConnected || instructedOnce.current) return;
-    if (typeof updateInstruction !== 'function') return;
-    instructedOnce.current = true;
+    if (!isConnected || toolsOnce.current) return;
+    if (typeof upsertTools !== 'function') return;
+    toolsOnce.current = true;
     void (async () => {
       try {
-        await updateInstruction(WEB_CHANNEL_INSTRUCTIONS);
-        onLog(`[${ts()}] Web channel instructions synced (Phase 0–4 + tools)`);
+        await upsertTools(tools as never);
+        onLog(`[${ts()}] Tool handlers registered (${tools.length})`);
         void postWebEvent(callId, {
-          type: 'web_instructions_synced',
-          detail: 'updateInstruction applied for web channel parity',
+          type: 'web_tools_synced',
+          detail: `upsertTools: ${tools.map((t) => t.name).join(', ')}`,
           status: 'connected',
         });
       } catch (err) {
         onLog(
-          `[${ts()}] Could not sync web instructions: ${
+          `[${ts()}] Tool sync warning: ${
             err instanceof Error ? err.message : 'unknown'
           }`,
         );
       }
     })();
-  }, [isConnected, updateInstruction, callId, onLog]);
+  }, [isConnected, upsertTools, tools, callId, onLog]);
+
+  useEffect(() => {
+    if (agentParticipant) {
+      onLog(`[${ts()}] Agent joined: ${agentParticipant.identity}`);
+    }
+  }, [agentParticipant, onLog]);
 
   useEffect(() => {
     if (!state || state === lastState.current) return;
@@ -117,13 +125,19 @@ function CallBody({
       <div className="bento-body">
         <p style={{ fontSize: 15, marginBottom: 16, lineHeight: 1.6 }}>
           Same Gawah agent as phone — talk continuously. Phase 0 caution, §161 fields, live
-          tools, readback, and confirmation. No record button.
+          tools, readback, and confirmation. Allow microphone + unmute browser audio if prompted.
         </p>
-        <div className="live-pill" style={{ marginBottom: 16 }}>
+
+        {/* Plays all remote audio (agent TTS). Critical for browser autoplay policies. */}
+        <RoomAudioRenderer />
+        <StartAudio label="Click to enable agent audio" className="cta-btn cta-ghost" />
+
+        <div className="live-pill" style={{ marginBottom: 16, marginTop: 12 }}>
           <span className="pulse-dot" />
           {isConnected ? agentLabel.toUpperCase() : 'CONNECTING…'}
         </div>
-        {(audioTrack || localMic) && (
+
+        {playTrack && (
           <div
             style={{
               marginBottom: 16,
@@ -132,19 +146,18 @@ function CallBody({
               minHeight: 72,
             }}
           >
-            {audioTrack && (
-              <>
-                <AudioTrack trackRef={audioTrack} />
-                <BarVisualizer state={state} trackRef={audioTrack} barCount={18} />
-              </>
-            )}
+            {/* Explicit agent track + RoomAudioRenderer (belt and suspenders) */}
+            <AudioTrack trackRef={playTrack} />
+            <BarVisualizer state={state} trackRef={playTrack} barCount={18} />
           </div>
         )}
+
         {agentParticipant && (
           <div className="pager-meta" style={{ marginBottom: 12 }}>
             Agent: {agentParticipant.identity}
           </div>
         )}
+
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <TrackToggle source={Track.Source.Microphone} className="cta-btn cta-ghost">
             Mic
@@ -201,8 +214,15 @@ export function LiveWebCall({
       audio
       video={false}
       tools={tools as never}
+      onConnectionChange={(connected, agentIdentity) => {
+        onLog(
+          `[${ts()}] Connection ${connected ? 'up' : 'down'}${
+            agentIdentity ? ` · ${agentIdentity}` : ''
+          }`,
+        );
+      }}
     >
-      <CallBody callId={callId} onLog={onLog} onEnded={onEnded} />
+      <CallBody callId={callId} onLog={onLog} onEnded={onEnded} tools={tools} />
     </UpliftAIRoom>
   );
 }

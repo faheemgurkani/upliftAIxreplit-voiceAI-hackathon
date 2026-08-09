@@ -10,8 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.config import get_settings
 from app.prompts.agent_config import GAWAH_ASSISTANT_CONFIG, GAWAH_TOOLS
 from app.services.phone_utils import CALL_INSTRUCTIONS, WEB_CALL_INSTRUCTIONS
+from app.services.uplift_service import UpliftService
 
 
 def main() -> None:
@@ -48,17 +50,20 @@ def main() -> None:
     assert nested["location"] == "Lahore"
     print("✓ Uplift payload shape documented for frontend extractToolArguments")
 
-    # Adhoc body shape
-    adhoc_body = {
-        "participantName": "Witness",
-        "config": GAWAH_ASSISTANT_CONFIG["config"],
-    }
-    assert "agent" in adhoc_body["config"]
-    assert "stt" in adhoc_body["config"]
-    assert adhoc_body["config"]["stt"]["default"]["language"] == "ur"
-    print("✓ adhoc session body uses full Gawah config (ur STT)")
+    # Adhoc body shape — must keep FULL Phase 0–4 instructions + web channel notes
+    uplift = UpliftService(get_settings())
+    web_cfg = uplift._web_adhoc_config()  # noqa: SLF001 — parity probe
+    assert "agent" in web_cfg
+    assert "stt" in web_cfg
+    assert web_cfg["stt"]["default"]["language"] == "ur"
+    instr = web_cfg["agent"]["instructions"]
+    assert "web_browser" in instr
+    assert "Phase 0" in instr or "161" in instr
+    assert len(instr) > len(WEB_CALL_INSTRUCTIONS) + 500
+    assert web_cfg["agent"].get("initialGreeting") is True
+    print("✓ adhoc web config prepends channel notes without wiping Phase 0–4")
 
-    print(json.dumps({"tool_count": len(names), "ok": True}))
+    print(json.dumps({"tool_count": len(names), "ok": True, "instructions_len": len(instr)}))
     print("web agent parity checks passed")
 
 
