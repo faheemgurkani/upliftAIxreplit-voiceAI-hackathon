@@ -181,6 +181,7 @@ async def create_session(
         or f"web-{room}-{int(datetime.now(timezone.utc).timestamp())}"
     )
     demo = bool(session.get("demo", False))
+    adhoc = bool(session.get("adhoc", False))
     events = [
         {
             "at": _now_iso(),
@@ -188,7 +189,11 @@ async def create_session(
             "detail": (
                 "Offline demo credentials — use web recorder to submit testimony"
                 if demo
-                else "Uplift browser session created"
+                else (
+                    "Uplift adhoc WebRTC session (fresh Gawah agent config)"
+                    if adhoc
+                    else "Uplift browser session created"
+                )
             ),
         }
     ]
@@ -233,14 +238,17 @@ async def create_session(
         "sessionId": call_id,
         "callId": call_id,
         "demo": demo,
+        "adhoc": adhoc,
         "ok": session.get("ok", True),
         "detail": session.get("detail"),
         "channel": "web_browser",
         "status": "dispatched",
         "label": tracked.get("label"),
         "message": (
-            "Web session tracked. Connect mic (live agent) or record testimony in-browser. "
+            "Live web session ready — same Gawah agent as phone (tools + Phase 0–4). "
             "Status appears on Dashboard → Calls."
+            if not demo
+            else "Demo credentials only — live agent unavailable; mic upload fallback may be used."
         ),
     }
 

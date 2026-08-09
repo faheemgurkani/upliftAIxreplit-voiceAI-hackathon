@@ -55,6 +55,38 @@ class UpliftService:
             "Content-Type": "application/json",
         }
 
+    async def sync_assistant_config(self, assistant_id: str) -> Dict[str, Any]:
+        """
+        Push current GAWAH_ASSISTANT_CONFIG (instructions + tools) to Uplift.
+
+        Keeps phone PSTN and web WebRTC on the same agent behaviour. Uplift
+        update endpoint: POST /realtime-assistants/{id} (partial config ok).
+        """
+        if not self.enabled or not assistant_id or str(assistant_id).startswith("demo"):
+            return {"ok": False, "detail": "Assistant sync skipped"}
+
+        url = (
+            f"{self.settings.uplift_base_url.rstrip('/')}"
+            f"/realtime-assistants/{assistant_id}"
+        )
+        body = {
+            "name": GAWAH_ASSISTANT_CONFIG.get("name"),
+            "description": GAWAH_ASSISTANT_CONFIG.get("description"),
+            "config": GAWAH_ASSISTANT_CONFIG.get("config"),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=self._headers(), json=body)
+                if response.status_code >= 400:
+                    return {
+                        "ok": False,
+                        "detail": response.text[:400],
+                        "status_code": response.status_code,
+                    }
+                return {"ok": True, "assistantId": assistant_id, "synced": True}
+        except httpx.HTTPError as exc:
+            return {"ok": False, "detail": str(exc)}
+
     async def ensure_assistant(self) -> Dict[str, Any]:
         if not self.enabled:
             return {
@@ -63,7 +95,14 @@ class UpliftService:
                 "detail": "UPLIFTAI_API_KEY not set",
             }
         if self.settings.uplift_assistant_id:
-            return {"ok": True, "assistantId": self.settings.uplift_assistant_id}
+            # Best-effort sync so web/phone share latest Phase 0–4 + tools
+            sync = await self.sync_assistant_config(self.settings.uplift_assistant_id)
+            return {
+                "ok": True,
+                "assistantId": self.settings.uplift_assistant_id,
+                "synced": bool(sync.get("ok")),
+                "sync_detail": sync.get("detail"),
+            }
 
         url = f"{self.settings.uplift_base_url.rstrip('/')}/realtime-assistants"
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -86,9 +125,67 @@ class UpliftService:
             )
             return {"ok": True, "assistantId": assistant_id, "raw": data}
 
+    async def create_adhoc_web_session(
+        self, participant_name: str = "Witness"
+    ) -> Dict[str, Any]:
+        """
+        Web demo path: adhoc session with full current GAWAH config.
+
+        Guarantees latest instructions + tool schemas even if the persisted
+        assistant is stale. Client still registers tool handlers via React SDK.
+        """
+        if not self.enabled:
+            return {"ok": False, "detail": "Uplift not configured"}
+
+        url = (
+            f"{self.settings.uplift_base_url.rstrip('/')}"
+            f"/realtime-assistants/adhoc/createSession"
+        )
+        config = GAWAH_ASSISTANT_CONFIG.get("config") or {}
+        body = {
+            "participantName": participant_name,
+            "config": config,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=self._headers(), json=body)
+                if response.status_code >= 400:
+                    return {
+                        "ok": False,
+                        "detail": response.text[:500],
+                        "status_code": response.status_code,
+                    }
+                data = response.json()
+                session_id = (
+                    data.get("sessionId")
+                    or data.get("session_id")
+                    or data.get("id")
+                    or data.get("roomName")
+                    or data.get("room")
+                )
+                return {
+                    "ok": True,
+                    "demo": False,
+                    "adhoc": True,
+                    "token": data.get("token") or data.get("accessToken"),
+                    "wsUrl": data.get("wsUrl") or data.get("serverUrl") or data.get("url"),
+                    "roomName": data.get("roomName") or data.get("room"),
+                    "sessionId": session_id,
+                    "assistantId": "adhoc",
+                    "raw": data,
+                }
+        except httpx.HTTPError as exc:
+            return {"ok": False, "detail": str(exc)}
+
     async def create_session(
         self, participant_name: str = "Witness"
     ) -> Dict[str, Any]:
+        # Prefer adhoc web session with fresh Gawah config (parity with phone prompt/tools)
+        if self.enabled:
+            adhoc = await self.create_adhoc_web_session(participant_name)
+            if adhoc.get("ok") and adhoc.get("token") and adhoc.get("wsUrl"):
+                return adhoc
+
         assistant = await self.ensure_assistant()
         assistant_id = assistant.get("assistantId") or self.settings.uplift_assistant_id
 
