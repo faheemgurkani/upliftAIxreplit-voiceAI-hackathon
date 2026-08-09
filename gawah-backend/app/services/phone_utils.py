@@ -46,3 +46,16 @@ CALL_INSTRUCTIONS = (
     "phir CrPC Section 161 ke mutabiq 5 fields collect karein. "
     "Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein."
 )
+
+# Injected on web WebRTC connect via updateInstruction — mirrors phone CALL_INSTRUCTIONS.
+WEB_CALL_INSTRUCTIONS = (
+    "Yeh browser / web call Gawah demo / live witness intake hai — phone call jaisi hi. "
+    "Channel: web_browser (WebRTC). Witness ne khud demo se session shuru kiya hai. "
+    "Phase 0 caution (voluntariness + PDPA consent) pehle complete karein, "
+    "phir CrPC Section 161 ke mutabiq 5 fields collect karein. "
+    "Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein. "
+    "Tools available: save_witness_statement, flag_inconsistency, flag_intimidation, "
+    "enable_privacy_mode, assess_protection_need, confirm_statement. "
+    "Readback ke baad jab witness 'haan' kahe to confirm_statement call karein, "
+    "phir reference code teen baar bolen."
+)

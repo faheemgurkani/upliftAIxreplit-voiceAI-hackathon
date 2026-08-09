@@ -148,6 +148,28 @@ GAWAH_TOOLS = [
         },
         "timeout": 10,
     },
+    {
+        "name": "confirm_statement",
+        "description": (
+            "Record the witness's spoken confirmation after readback. "
+            "Call when the witness says haan / yes that the statement is correct."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "confirmed": {
+                    "type": "boolean",
+                    "description": "True when witness confirms the readback.",
+                },
+                "ref_code": {
+                    "type": "string",
+                    "description": "Reference code just issued, if known.",
+                },
+            },
+            "required": [],
+        },
+        "timeout": 8,
+    },
 ]
 
 GAWAH_ASSISTANT_CONFIG = {
