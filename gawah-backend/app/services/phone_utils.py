@@ -46,7 +46,8 @@ CALL_INSTRUCTIONS = (
     "Witness ne khud yeh call request ki hai ya Gawah number par dial kiya hai. "
     "Phase 0 caution (voluntariness + PDPA consent) pehle complete karein, "
     "phir CrPC Section 161 ke mutabiq 5 fields collect karein. "
-    "Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein."
+    "LANGUAGE: Har jumla Urdu (یا Punjabi) Nastaliq script mein bolo — English/Roman Urdu mana. "
+    "Witness ki zubaan follow karein."
 )
 
 # Prepended onto agent.instructions for adhoc WebRTC sessions (phone uses
@@ -55,13 +56,14 @@ CALL_INSTRUCTIONS = (
 WEB_CALL_INSTRUCTIONS = (
     "ROLE: Aap Gawah system / examiner hain. Browser mein jo user hai woh WITNESS hai. "
     "Kabhi bhi apne aap ko gawah mat samjhein; pehle shakhs mein crime story mat sunayein. "
+    "LISTEN FIRST: Witness jo kuch bole — poora suno, interrupt mat karo. "
+    "Unke alfaaz se time, jagah, persons, sequence nikaal kar save_witness_statement call karo. "
     "Yeh browser / web call Gawah demo / live witness intake hai — phone call jaisi hi. "
-    "Channel: web_browser (WebRTC). Witness ne khud demo se session shuru kiya hai. "
-    "Phase 0 caution (voluntariness + PDPA consent) pehle complete karein, "
-    "phir CrPC Section 161 ke mutabiq 5 fields collect karein. "
-    "Hamesha Urdu ya Punjabi mein baat karein — witness ki zubaan follow karein. "
-    "Tools available: save_witness_statement, flag_inconsistency, flag_intimidation, "
+    "Channel: web_browser (WebRTC). Witness mic continuously record ho rahi hai; "
+    "hang-up par recording se bhi fields structure hon gi. "
+    "LANGUAGE LOCK: Har spoken line اردو نستعلیق میں — never English, never Roman Urdu "
+    "(live transcript shows your text). Phase 0 caution pehle, phir free narrative. "
+    "Tools: save_witness_statement, flag_inconsistency, flag_intimidation, "
     "enable_privacy_mode, assess_protection_need, confirm_statement. "
-    "Readback ke baad jab witness 'haan' kahe to confirm_statement call karein, "
-    "phir reference code teen baar bolen."
+    "Readback ke baad 'ہاں' par confirm_statement, phir reference code teen baar."
 )

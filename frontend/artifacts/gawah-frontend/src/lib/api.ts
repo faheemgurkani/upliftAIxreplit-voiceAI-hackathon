@@ -181,12 +181,23 @@ export interface WebEventResponse {
   events?: Array<Record<string, unknown>>;
 }
 
+export interface WebDialogueTurn {
+  role: 'agent' | 'witness';
+  text: string;
+  id?: string;
+  at?: number;
+}
+
 export interface WebRecordingResponse {
   ok: boolean;
   call_id?: string;
   ref_code?: string;
   status?: string;
+  /** Full Agent/Witness labelled transcript (not truncated) */
   transcript?: string;
+  /** Structured chat turns when available */
+  dialogue?: WebDialogueTurn[];
+  witness_transcript?: string;
   readback_text?: string;
   statement_id?: string;
   local_recording_path?: string;
@@ -208,7 +219,12 @@ export const postWebEvent = (
 export const uploadWebRecording = async (
   callId: string,
   blob: Blob,
-  opts: { language?: string; participantName?: string; filename?: string } = {},
+  opts: {
+    language?: string;
+    participantName?: string;
+    filename?: string;
+    dialogue?: WebDialogueTurn[];
+  } = {},
 ): Promise<WebRecordingResponse> => {
   const form = new FormData();
   form.append(
@@ -218,6 +234,9 @@ export const uploadWebRecording = async (
   );
   form.append('language', opts.language || 'ur');
   form.append('participantName', opts.participantName || 'Witness');
+  if (opts.dialogue?.length) {
+    form.append('dialogue', JSON.stringify(opts.dialogue));
+  }
 
   const url = `${getBaseUrl()}/api/sessions/web/${encodeURIComponent(callId)}/recording`;
   const res = await fetch(url, { method: 'POST', body: form, cache: 'no-store' });

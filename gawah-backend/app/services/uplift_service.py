@@ -71,10 +71,18 @@ class UpliftService:
             f"{self.settings.uplift_base_url.rstrip('/')}"
             f"/realtime-assistants/{assistant_id}"
         )
+        config = copy.deepcopy(GAWAH_ASSISTANT_CONFIG.get("config") or {})
+        tts = config.setdefault("tts", {}).setdefault("default", {})
+        if self.settings.uplift_tts_voice_id:
+            tts["voiceId"] = self.settings.uplift_tts_voice_id
+        if self.settings.uplift_tts_output_format:
+            tts["outputFormat"] = self.settings.uplift_tts_output_format
+        stt = config.setdefault("stt", {}).setdefault("default", {})
+        stt["language"] = "ur"
         body = {
             "name": GAWAH_ASSISTANT_CONFIG.get("name"),
             "description": GAWAH_ASSISTANT_CONFIG.get("description"),
-            "config": GAWAH_ASSISTANT_CONFIG.get("config"),
+            "config": config,
         }
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -147,13 +155,16 @@ class UpliftService:
         agent["initialGreeting"] = True
         if not agent.get("greetingInstructions"):
             agent["greetingInstructions"] = (
-                "Assalam-u-Alaikum. Main Gawah system hoon — aap gawah hain. "
-                "Kya aap apna bayan dena chahte hain?"
+                "السلام علیکم۔ میں گواہ سسٹم ہوں — آپ گواہ ہیں۔ "
+                "کیا آپ اپنا بیان دینا چاہتے ہیں؟ تمام بات اردو نستعلیق میں بولیں۔"
             )
         # Prefer configured TTS voice (same as readback / Pakistan demos)
         tts = config.setdefault("tts", {}).setdefault("default", {})
         if self.settings.uplift_tts_voice_id:
             tts["voiceId"] = self.settings.uplift_tts_voice_id
+        # Keep STT on Urdu so live witness captions match spoken language
+        stt = config.setdefault("stt", {}).setdefault("default", {})
+        stt["language"] = "ur"
         return config
 
     async def create_adhoc_web_session(

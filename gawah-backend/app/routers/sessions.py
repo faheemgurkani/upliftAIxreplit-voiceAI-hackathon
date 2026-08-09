@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -305,6 +306,7 @@ async def upload_web_recording(
     file: UploadFile = File(...),
     language: str = Form(default="ur"),
     participantName: str = Form(default="Witness"),
+    dialogue: Optional[str] = Form(default=None),
     db: Database = Depends(get_db),
     uplift: UpliftService = Depends(get_uplift_service),
     llm: LLMService = Depends(get_llm_service),
@@ -312,8 +314,8 @@ async def upload_web_recording(
     """
     Upload browser MediaRecorder audio → STT → structure → statement.
 
-    This is the demo path that stores transcripts/recordings without PSTN.
-    Phone outbound path remains available at POST /api/sessions/call.
+    Optional `dialogue` JSON: [{role: agent|witness, text, id?, at?}] from live
+    LiveKit transcriptions so the UI can show a full Agent/Witness chat.
     """
     if not db.get_call(call_id):
         # Allow upload even if create was skipped (idempotent track)
@@ -337,6 +339,15 @@ async def upload_web_recording(
             }
         )
 
+    dialogue_turns: Optional[List[Dict[str, Any]]] = None
+    if dialogue and dialogue.strip():
+        try:
+            parsed = json.loads(dialogue)
+            if isinstance(parsed, list):
+                dialogue_turns = [t for t in parsed if isinstance(t, dict) and t.get("text")]
+        except Exception:  # noqa: BLE001
+            dialogue_turns = None
+
     raw = await file.read()
     result = await process_web_recording(
         call_id=call_id,
@@ -347,6 +358,7 @@ async def upload_web_recording(
         uplift=uplift,
         llm=llm,
         participant_name=participantName,
+        dialogue=dialogue_turns,
     )
     if not result.get("ok"):
         raise HTTPException(
@@ -361,9 +373,10 @@ async def upload_web_recording(
 async def complete_web_session(
     call_id: str,
     uplift: UpliftService = Depends(get_uplift_service),
+    llm: LLMService = Depends(get_llm_service),
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Mark web session ended and pull Uplift artifacts when a real session id exists."""
+    """Mark web session ended, sync artifacts, and ensure dashboard statement exists."""
     call = db.get_call(call_id)
     if not call:
         raise HTTPException(status_code=404, detail="Web call not found")
@@ -400,7 +413,24 @@ async def complete_web_session(
             patch = persistable_fields({**merged, "call_id": call_id, "events": events})
 
     updated = db.upsert_call(patch)
-    return {"ok": True, "item": updated}
+
+    # Fill / link dashboard statement from recording or transcript when present
+    statement_result: Dict[str, Any] = {}
+    try:
+        statement_result = await ensure_statement_from_call(
+            call_id=call_id,
+            db=db,
+            uplift=uplift,
+            llm=llm,
+            language="ur",
+            force=False,
+        )
+        if statement_result.get("ref_code"):
+            updated = db.get_call(call_id) or updated
+    except Exception as exc:  # noqa: BLE001
+        statement_result = {"ok": False, "detail": str(exc)[:240]}
+
+    return {"ok": True, "item": updated, "statement": statement_result}
 
 
 @router.get("/activity")

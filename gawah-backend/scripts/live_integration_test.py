@@ -90,7 +90,8 @@ async def test_uplift_tts():
         return
 
     voices = [
-        os.getenv("UPLIFT_TTS_VOICE_ID", "v_8eelc901"),
+        os.getenv("UPLIFT_TTS_VOICE_ID", "defense-advocate"),
+        "defense-advocate",
         "v_8eelc901",
         "helpdesk-agent",
         "ai_lwr_f_fb",

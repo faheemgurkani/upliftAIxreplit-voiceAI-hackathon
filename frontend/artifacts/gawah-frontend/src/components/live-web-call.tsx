@@ -1,19 +1,29 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AudioTrack,
   BarVisualizer,
-  DisconnectButton,
   RoomAudioRenderer,
   StartAudio,
-  TrackToggle,
   UpliftAIRoom,
+  useLocalParticipant,
   useTracks,
+  useTranscriptions,
   useUpliftAIRoom,
   useVoiceAssistant,
 } from '@upliftai/assistants-react';
 import { Track } from 'livekit-client';
 import { buildGawahTools, type ToolEvent } from '@/lib/gawah-tools';
-import { postWebEvent } from '@/lib/api';
+import {
+  completeWebSession,
+  postWebEvent,
+  uploadWebRecording,
+  type WebRecordingResponse,
+} from '@/lib/api';
+import {
+  formatDialogueTranscript,
+  type DialogueTurn,
+} from '@/lib/dialogue';
+import { TranscriptChat } from '@/components/transcript-chat';
 
 interface Props {
   token: string;
@@ -21,18 +31,14 @@ interface Props {
   callId: string;
   onLog: (line: string) => void;
   onTool?: (ev: ToolEvent) => void;
-  onEnded?: () => void;
+  /** Called after hang-up + optional recording→statement pipeline */
+  onEnded?: (result?: WebRecordingResponse | null) => void;
 }
 
 /**
- * Live WebRTC body.
+ * Live WebRTC + continuous witness mic capture + live Agent/Witness dialogue.
  *
- * Important (Uplift docs):
- * - updateInstruction() REPLACES the entire system prompt. Never use it to
- *   inject a short "web channel" blurb — that wiped Phase 0–4 + greeting and
- *   made the agent go silent vs phone (phone uses additive additionalInstructions).
- * - Web channel notes are baked into adhoc createSession config on the backend.
- * - Browser autoplay often blocks agent TTS until a user gesture → StartAudio.
+ * Do NOT call updateInstruction() with a short blurb — it replaces the full prompt.
  */
 function CallBody({
   callId,
@@ -42,22 +48,125 @@ function CallBody({
 }: {
   callId: string;
   onLog: (line: string) => void;
-  onEnded?: () => void;
+  onEnded?: (result?: WebRecordingResponse | null) => void;
   tools: ReturnType<typeof buildGawahTools>;
 }) {
   const { isConnected, agentParticipant, upsertTools } = useUpliftAIRoom();
-  const { state, audioTrack } = useVoiceAssistant();
+  const { state, audioTrack, agentTranscriptions } = useVoiceAssistant();
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+  const transcriptions = useTranscriptions();
   const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
   const agentMicTrack = tracks.find((t) => !t.participant.isLocal);
   const playTrack = audioTrack || agentMicTrack;
+
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [ending, setEnding] = useState(false);
+
   const connectedOnce = useRef(false);
   const toolsOnce = useRef(false);
+  const recOnce = useRef(false);
   const lastState = useRef<string>('');
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const ownStreamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const mimeRef = useRef('audio/webm');
+  const endingRef = useRef(false);
+  const dialogueRef = useRef<DialogueTurn[]>([]);
+
+  const localIdentity = localParticipant?.identity;
+  const agentIdentity = agentParticipant?.identity;
+
+  /** LiveKit text streams + agent track segments → labelled dialogue */
+  const dialogue = useMemo((): DialogueTurn[] => {
+    const byId = new Map<string, DialogueTurn>();
+
+    for (const t of transcriptions) {
+      const text = (t.text || '').trim();
+      if (!text) continue;
+      const identity = t.participantInfo?.identity || '';
+      const role: DialogueTurn['role'] =
+        localIdentity && identity === localIdentity ? 'witness' : 'agent';
+      const id = String(t.streamInfo?.id || `${role}-${t.streamInfo?.timestamp}-${text.slice(0, 24)}`);
+      byId.set(id, {
+        role,
+        text,
+        id,
+        at: Number(t.streamInfo?.timestamp) || Date.now(),
+      });
+    }
+
+    // Backup: agent mic transcription segments from useVoiceAssistant
+    for (const seg of agentTranscriptions || []) {
+      const text = (seg.text || '').trim();
+      if (!text) continue;
+      const id = String(seg.id || `agent-seg-${seg.firstReceivedTime || text.slice(0, 24)}`);
+      if (byId.has(id)) {
+        byId.set(id, { ...byId.get(id)!, text, role: 'agent' });
+      } else {
+        byId.set(id, {
+          role: 'agent',
+          text,
+          id,
+          at: Number(seg.firstReceivedTime) || Date.now(),
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => (a.at || 0) - (b.at || 0));
+  }, [transcriptions, agentTranscriptions, localIdentity, agentIdentity]);
+
+  useEffect(() => {
+    dialogueRef.current = dialogue;
+  }, [dialogue]);
+
+  // Dedicated continuous witness capture → STT → §161 fields on hang-up
+  useEffect(() => {
+    if (!isConnected || recOnce.current) return;
+    recOnce.current = true;
+
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        ownStreamRef.current = stream;
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+        mimeRef.current = mime;
+        const recorder = new MediaRecorder(stream, { mimeType: mime });
+        chunksRef.current = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+        mediaRef.current = recorder;
+        recorder.start(1000);
+        setRecSeconds(0);
+        timerRef.current = window.setInterval(() => setRecSeconds((s) => s + 1), 1000);
+        onLog(`[${ts()}] Witness mic recording — everything you say is captured`);
+        void postWebEvent(callId, {
+          type: 'witness_recording_started',
+          detail: 'Continuous mic capture for statement structuring',
+          status: 'connected',
+        });
+      } catch (err) {
+        recOnce.current = false;
+        onLog(
+          `[${ts()}] Mic record warning: ${
+            err instanceof Error ? err.message : 'permission denied'
+          }`,
+        );
+      }
+    })();
+
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    };
+  }, [isConnected, callId, onLog]);
 
   useEffect(() => {
     if (isConnected && !connectedOnce.current) {
       connectedOnce.current = true;
-      onLog(`[${ts()}] Live web call connected — full Gawah agent (same as phone)`);
+      onLog(`[${ts()}] Live web call connected — speak your statement; we record + structure it`);
       void postWebEvent(callId, {
         type: 'webrtc_connected',
         detail: 'Uplift WebRTC room connected',
@@ -66,7 +175,6 @@ function CallBody({
     }
   }, [isConnected, callId, onLog]);
 
-  // Ensure client tool handlers are registered (RPC runs in the browser).
   useEffect(() => {
     if (!isConnected || toolsOnce.current) return;
     if (typeof upsertTools !== 'function') return;
@@ -75,11 +183,6 @@ function CallBody({
       try {
         await upsertTools(tools as never);
         onLog(`[${ts()}] Tool handlers registered (${tools.length})`);
-        void postWebEvent(callId, {
-          type: 'web_tools_synced',
-          detail: `upsertTools: ${tools.map((t) => t.name).join(', ')}`,
-          status: 'connected',
-        });
       } catch (err) {
         onLog(
           `[${ts()}] Tool sync warning: ${
@@ -88,12 +191,14 @@ function CallBody({
         );
       }
     })();
-  }, [isConnected, upsertTools, tools, callId, onLog]);
+  }, [isConnected, upsertTools, tools, onLog]);
 
+  const agentLogged = useRef<string | null>(null);
   useEffect(() => {
-    if (agentParticipant) {
-      onLog(`[${ts()}] Agent joined: ${agentParticipant.identity}`);
-    }
+    const id = agentParticipant?.identity;
+    if (!id || agentLogged.current === id) return;
+    agentLogged.current = id;
+    onLog(`[${ts()}] Agent joined: ${id}`);
   }, [agentParticipant, onLog]);
 
   useEffect(() => {
@@ -107,77 +212,174 @@ function CallBody({
     });
   }, [state, callId, onLog]);
 
+  const stopAndUpload = async () => {
+    if (endingRef.current) return;
+    endingRef.current = true;
+    setEnding(true);
+
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const turns = dialogueRef.current;
+    onLog(
+      `[${ts()}] Ending call — uploading recording + ${turns.length} dialogue turn(s)…`,
+    );
+    void postWebEvent(callId, {
+      type: 'webrtc_disconnect',
+      detail: `User ended call; dialogue turns=${turns.length}`,
+      status: 'processing',
+    });
+
+    let result: WebRecordingResponse | null = null;
+    const recorder = mediaRef.current;
+
+    try {
+      if (recorder && recorder.state !== 'inactive') {
+        const blob = await new Promise<Blob>((resolve) => {
+          recorder.onstop = () => {
+            resolve(new Blob(chunksRef.current, { type: mimeRef.current }));
+          };
+          recorder.stop();
+        });
+
+        if (blob.size > 0) {
+          result = await uploadWebRecording(callId, blob, {
+            language: 'ur',
+            participantName: 'Witness',
+            filename: `witness-${callId}.webm`,
+            dialogue: turns,
+          });
+          onLog(
+            `[${ts()}] Statement structured · ref ${result.ref_code || '—'} · dialogue ${
+              result.dialogue?.length || turns.length
+            } turns`,
+          );
+        } else {
+          onLog(`[${ts()}] Recording empty — completing session without upload`);
+        }
+      } else {
+        onLog(`[${ts()}] No recorder — completing session`);
+      }
+    } catch (err) {
+      onLog(
+        `[${ts()}] Upload/structure error: ${
+          err instanceof Error ? err.message : 'unknown'
+        }`,
+      );
+    }
+
+    // Ensure result carries dialogue for ended UI even if backend omitted it
+    if (result && !result.dialogue?.length && turns.length) {
+      result = {
+        ...result,
+        dialogue: turns,
+        transcript: result.transcript || formatDialogueTranscript(turns),
+      };
+    } else if (!result && turns.length) {
+      result = {
+        ok: true,
+        call_id: callId,
+        dialogue: turns,
+        transcript: formatDialogueTranscript(turns),
+      };
+    }
+
+    try {
+      await completeWebSession(callId);
+    } catch {
+      // non-fatal
+    }
+
+    ownStreamRef.current?.getTracks().forEach((t) => t.stop());
+    ownStreamRef.current = null;
+
+    onEnded?.(result);
+  };
+
   const agentLabel =
-    state === 'speaking'
-      ? 'Agent speaking…'
-      : state === 'thinking'
-        ? 'Agent thinking…'
-        : state === 'listening'
-          ? 'Listening — speak your statement'
-          : 'Connecting…';
+    ending
+      ? 'Saving your statement…'
+      : state === 'speaking'
+        ? 'Agent speaking…'
+        : state === 'thinking'
+          ? 'Agent thinking…'
+          : state === 'listening'
+            ? 'Listening — speak your statement'
+            : 'Connecting…';
+
+  const mm = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+  const ss = String(recSeconds % 60).padStart(2, '0');
 
   return (
-    <div className="bento">
-      <div className="bento-h">
-        <span className="dot dot-o" />
-        LIVE.WEB.CALL · UPLIFT WEBRTC
-      </div>
-      <div className="bento-body">
-        <p style={{ fontSize: 15, marginBottom: 16, lineHeight: 1.6 }}>
-          Same Gawah agent as phone — talk continuously. Phase 0 caution, §161 fields, live
-          tools, readback, and confirmation. Allow microphone + unmute browser audio if prompted.
-        </p>
-
-        {/* Plays all remote audio (agent TTS). Critical for browser autoplay policies. */}
-        <RoomAudioRenderer />
-        <StartAudio label="Click to enable agent audio" className="cta-btn cta-ghost" />
-
-        <div className="live-pill" style={{ marginBottom: 16, marginTop: 12 }}>
-          <span className="pulse-dot" />
-          {isConnected ? agentLabel.toUpperCase() : 'CONNECTING…'}
+    <div className="live-call-layout">
+      <div className="bento live-call-panel">
+        <div className="bento-h">
+          <span className="dot dot-o" />
+          LIVE.WEB.CALL · WITNESS RECORDING
         </div>
+        <div className="bento-body">
+          <p style={{ fontSize: 15, marginBottom: 16, lineHeight: 1.6 }}>
+            You are the witness. Speak naturally — we capture the live dialogue (agent + you) and
+            your mic for the §161 fields. Allow mic + agent audio if the browser asks.
+          </p>
 
-        {playTrack && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: 16,
-              border: '1px solid var(--e-line, #333)',
-              minHeight: 72,
-            }}
-          >
-            {/* Explicit agent track + RoomAudioRenderer (belt and suspenders) */}
-            <AudioTrack trackRef={playTrack} />
-            <BarVisualizer state={state} trackRef={playTrack} barCount={18} />
+          <RoomAudioRenderer />
+
+          <div className="call-status-row">
+            <div className="live-pill">
+              <span className="pulse-dot" />
+              {isConnected ? agentLabel.toUpperCase() : 'CONNECTING…'}
+            </div>
+            {isConnected && !ending && (
+              <div className="call-rec-meta">REC · {mm}:{ss}</div>
+            )}
           </div>
-        )}
 
-        {agentParticipant && (
-          <div className="pager-meta" style={{ marginBottom: 12 }}>
-            Agent: {agentParticipant.identity}
+          <StartAudio label="Tap to hear the agent" className="call-start-audio" />
+
+          {playTrack && (
+            <div className="call-viz">
+              <AudioTrack trackRef={playTrack} />
+              <BarVisualizer state={state} trackRef={playTrack} barCount={18} />
+            </div>
+          )}
+
+          <div className="call-controls" role="group" aria-label="Call controls">
+            <button
+              type="button"
+              className="cta-btn cta-ghost"
+              disabled={!isConnected || ending}
+              aria-pressed={isMicrophoneEnabled}
+              onClick={() => {
+                void localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled);
+              }}
+            >
+              <span className="cta-sq">{isMicrophoneEnabled ? '●' : '○'}</span>
+              <span className="cta-lbl">{isMicrophoneEnabled ? 'Mic on' : 'Mic off'}</span>
+            </button>
+            <button
+              type="button"
+              className="cta-btn"
+              disabled={ending || !isConnected}
+              onClick={() => void stopAndUpload()}
+            >
+              <span className="cta-sq">■</span>
+              <span className="cta-lbl">{ending ? 'Saving…' : 'End call'}</span>
+            </button>
           </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <TrackToggle source={Track.Source.Microphone} className="cta-btn cta-ghost">
-            Mic
-          </TrackToggle>
-          <DisconnectButton
-            className="cta-btn"
-            onClick={() => {
-              onLog(`[${ts()}] Ended live web call`);
-              void postWebEvent(callId, {
-                type: 'webrtc_disconnect',
-                detail: 'User ended call',
-                status: 'completed',
-              });
-              onEnded?.();
-            }}
-          >
-            End call
-          </DisconnectButton>
         </div>
       </div>
+
+      <aside className="live-call-transcript">
+        <TranscriptChat
+          turns={dialogue}
+          live
+          title="لائیو بات چیت"
+          emptyHint="گفتگو یہاں ظاہر ہوگی — ایجنٹ اور گواہ کی سطریں اردو میں…"
+        />
+      </aside>
     </div>
   );
 }

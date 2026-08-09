@@ -182,9 +182,10 @@ GAWAH_ASSISTANT_CONFIG = {
             "instructions": AGENT_INSTRUCTIONS,
             "initialGreeting": True,
             "greetingInstructions": (
-                "Assalam-u-Alaikum. Main Gawah system hoon — aap ka bayan sunne aur darz karne "
-                "wala digital nizam. Aap gawah hain; main sirf aap ki baat record karta hoon. "
-                "Jo aap bolenge woh mehfooz ho jaye ga. Kya aap apna bayan dena chahte hain?"
+                "السلام علیکم۔ میں گواہ سسٹم ہوں — آپ کا بیان سننے اور درج کرنے والا ڈیجیٹل نظام۔ "
+                "آپ گواہ ہیں؛ میں صرف آپ کی بات ریکارڈ کرتا ہوں۔ جو آپ بولیں گے وہ محفوظ ہو جائے گا۔ "
+                "کیا آپ اپنا بیان دینا چاہتے ہیں؟ "
+                "تمام گفتگو اردو نستعلیق رسم الخط میں بولیں — انگریزی یا رومن اردو مت بولیں۔"
             ),
             "tools": GAWAH_TOOLS,
         },
@@ -198,8 +199,9 @@ GAWAH_ASSISTANT_CONFIG = {
         "tts": {
             "default": {
                 "provider": "upliftai",
-                # Verified Singapore Orator voice (same family as phone / readback)
-                "voiceId": "v_8eelc901",
+                # Male Standard Urdu — Defense Advocate (clear, precise legal register)
+                # https://docs.upliftai.org/orator_voices
+                "voiceId": "defense-advocate",
                 "outputFormat": "MP3_22050_32",
             }
         },

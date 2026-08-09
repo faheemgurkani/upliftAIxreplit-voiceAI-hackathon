@@ -24,6 +24,48 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_dialogue(dialogue: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Keep only agent/witness turns with non-empty text."""
+    out: List[Dict[str, Any]] = []
+    if not dialogue:
+        return out
+    for i, raw in enumerate(dialogue):
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or "").strip()
+        if not text:
+            continue
+        role = str(raw.get("role") or "").strip().lower()
+        if role not in {"agent", "witness"}:
+            # Heuristic: unknown → agent if identity hints, else witness
+            role = "witness" if "witness" in role or "user" in role else "agent"
+        out.append(
+            {
+                "role": role,
+                "text": text,
+                "id": str(raw.get("id") or f"{role}-{i}"),
+                "at": raw.get("at"),
+            }
+        )
+    return out
+
+
+def _format_dialogue(dialogue: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for turn in dialogue:
+        label = "ایجنٹ" if turn.get("role") == "agent" else "گواہ"
+        lines.append(f"{label}: {turn.get('text', '').strip()}")
+    return "\n\n".join(lines)
+
+
+def _witness_text(dialogue: List[Dict[str, Any]]) -> str:
+    return " ".join(
+        str(t.get("text") or "").strip()
+        for t in dialogue
+        if t.get("role") == "witness" and str(t.get("text") or "").strip()
+    )
+
+
 def append_event(call: Dict[str, Any], event_type: str, detail: str = "", **extra: Any) -> List[Dict[str, Any]]:
     events = list(call.get("events") or [])
     entry = {
@@ -47,10 +89,14 @@ async def process_web_recording(
     uplift: UpliftService,
     llm: LLMService,
     participant_name: str = "Witness",
+    dialogue: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Persist web MediaRecorder audio, transcribe via Uplift STT when available,
     structure into a §161 statement, and update the tracked web call.
+
+    `dialogue` (optional) is a live Agent/Witness chat from LiveKit transcriptions.
+    Display uses the full dialogue; field structuring prefers witness-only text.
     """
     call = db.get_call(call_id)
     if not call:
@@ -58,6 +104,8 @@ async def process_web_recording(
 
     if not file_bytes:
         return {"ok": False, "detail": "Empty audio upload", "status_code": 400}
+
+    dialogue_turns = _normalize_dialogue(dialogue)
 
     # Save audio under local_audio_dir/calls/{call_id}/
     dest_dir = Path(uplift.settings.local_audio_dir) / "calls" / call_id
@@ -71,7 +119,8 @@ async def process_web_recording(
     events = append_event(
         call,
         "recording_received",
-        f"Saved {len(file_bytes)} bytes as {dest.name}",
+        f"Saved {len(file_bytes)} bytes as {dest.name}"
+        + (f"; dialogue turns={len(dialogue_turns)}" if dialogue_turns else ""),
         bytes=len(file_bytes),
     )
     db.upsert_call(
@@ -84,23 +133,24 @@ async def process_web_recording(
             "artifacts_status": "processing",
             "events": events,
             "channel": call.get("channel") or "web_browser",
+            "dialogue": dialogue_turns or None,
         }
     )
     db.record_kpi_event(
         "web_recording_uploaded",
-        {"call_id": call_id, "bytes": len(file_bytes)},
+        {"call_id": call_id, "bytes": len(file_bytes), "dialogue_turns": len(dialogue_turns)},
     )
 
     # STT — Uplift when keyed; otherwise treat as unavailable and keep raw empty
-    transcript = ""
+    witness_transcript = ""
     stt_detail = None
     stt = await uplift.transcribe(file_bytes, filename=dest.name)
     if stt.get("ok"):
-        transcript = (stt.get("transcript") or "").strip()
+        witness_transcript = (stt.get("transcript") or "").strip()
         events = append_event(
             {"events": events},
             "stt_complete",
-            f"Transcript length {len(transcript)} chars",
+            f"Witness STT length {len(witness_transcript)} chars",
         )
     else:
         stt_detail = stt.get("detail") or "STT unavailable"
@@ -110,9 +160,31 @@ async def process_web_recording(
             str(stt_detail)[:300],
         )
 
+    # If live dialogue had no witness lines, append STT as a witness turn
+    if witness_transcript and not _witness_text(dialogue_turns):
+        dialogue_turns = list(dialogue_turns) + [
+            {
+                "role": "witness",
+                "text": witness_transcript,
+                "id": f"stt-witness-{call_id}",
+                "at": None,
+            }
+        ]
+        events = append_event(
+            {"events": events},
+            "dialogue_merged_stt",
+            "Appended witness STT into dialogue (no live witness transcriptions)",
+        )
+
+    dialogue_text = _format_dialogue(dialogue_turns)
+    # Full transcript for display = labelled dialogue when present, else raw STT
+    transcript = dialogue_text or witness_transcript
+    # Structure §161 from witness speech only (agent questions pollute extraction)
+    structure_source = _witness_text(dialogue_turns) or witness_transcript
+
     # Structure fields from transcript (LLM or heuristic)
     lang = language if language in {"ur", "pa", "ps", "mixed", "en"} else "ur"
-    structured = await llm.structure_statement(transcript or "(empty recording)", lang)
+    structured = await llm.structure_statement(structure_source or "(empty recording)", lang)
 
     sequence = structured.sequence_of_events
     if isinstance(sequence, list):
@@ -180,7 +252,7 @@ async def process_web_recording(
         inconsistency_flags=inconsistency_flags,
         status="pending_review",
         call_recording_url=str(dest),
-        raw_transcript=transcript or None,
+        raw_transcript=transcript or witness_transcript or None,
     )
     if existing:
         record.id = existing.id
@@ -208,6 +280,8 @@ async def process_web_recording(
             "ended_at": _now(),
             "ended_by": "web_pipeline",
             "transcript": transcript or None,
+            "witness_transcript": witness_transcript or None,
+            "dialogue": dialogue_turns or None,
             "local_recording_path": str(dest),
             "recording_url": None,
             "artifacts_available": True,
@@ -219,6 +293,7 @@ async def process_web_recording(
                 "source": "web_pipeline",
                 "stt_ok": bool(stt.get("ok")),
                 "stt_detail": stt_detail,
+                "dialogue_turns": len(dialogue_turns),
                 "structured": structured.model_dump(),
             },
             "channel": "web_browser",
@@ -252,6 +327,8 @@ async def process_web_recording(
         "ref_code": ref_code,
         "status": "completed",
         "transcript": transcript,
+        "witness_transcript": witness_transcript,
+        "dialogue": dialogue_turns,
         "readback_text": readback,
         "statement_id": saved.id,
         "local_recording_path": str(dest),

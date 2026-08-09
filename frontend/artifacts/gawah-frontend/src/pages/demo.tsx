@@ -16,6 +16,8 @@ import type { SessionCreateResponse } from '@/lib/types';
 import { PageShell } from '@/components/layout/page-shell';
 import { WebCallRecorder } from '@/components/web-call-recorder';
 import { LiveWebCall } from '@/components/live-web-call';
+import { TranscriptChat } from '@/components/transcript-chat';
+import type { DialogueTurn } from '@/lib/dialogue';
 
 type Mode = 'phone' | 'browser';
 type DemoState =
@@ -48,7 +50,11 @@ export default function DemoPage() {
     !wsUrl.includes('demo.local') &&
     !liveFailed;
 
-  const pushLog = (line: string) => setToolLog((prev) => [...prev.slice(-80), line]);
+  const pushLog = (line: string) =>
+    setToolLog((prev) => {
+      if (prev[prev.length - 1] === line) return prev; // drop spam duplicates
+      return [...prev.slice(-80), line];
+    });
 
   const startBrowser = useMutation({
     mutationFn: () => createSession('Witness'),
@@ -395,8 +401,12 @@ export default function DemoPage() {
                     onTool={(ev) => {
                       if (ev.refCode) setLiveRefCode(ev.refCode);
                     }}
-                    onEnded={() => {
-                      void completeWebSession(webCallId).finally(() => setDemoState('ended'));
+                    onEnded={(result) => {
+                      if (result?.ref_code) {
+                        setLiveRefCode(result.ref_code);
+                        setWebResult(result);
+                      }
+                      setDemoState('ended');
                     }}
                   />
                 </LiveSdkBoundary>
@@ -425,18 +435,17 @@ export default function DemoPage() {
                 </div>
               )}
 
-              <div className="find-panel">
+              <div className="find-panel activity-log">
                 <div className="find-head">
                   <span className="find-n">LIVE</span>
-                  ACTIVITY LOG
+                  <span className="find-title">Activity log</span>
                 </div>
-                <div
-                  className="find-body"
-                  style={{ fontFamily: 'monospace', fontSize: 12, maxHeight: 180, overflow: 'auto' }}
-                >
-                  {toolLog.length === 0 && 'Waiting for events…'}
+                <div className="find-body activity-log-body">
+                  {toolLog.length === 0 && (
+                    <div className="activity-log-empty">Waiting for events…</div>
+                  )}
                   {toolLog.map((line, i) => (
-                    <div key={`${i}-${line}`} style={{ marginBottom: 6 }}>
+                    <div key={`${i}-${line}`} className="activity-log-line">
                       {line}
                     </div>
                   ))}
@@ -456,7 +465,7 @@ export default function DemoPage() {
             <div className="page-stack">
               <div className="bento">
                 <div className="bento-body" style={{ textAlign: 'center', padding: '40px 24px' }}>
-                  <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>
+                  <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 24 }}>
                     {webResult
                       ? `Web testimony saved · ref ${webResult.ref_code}`
                       : liveRefCode
@@ -465,13 +474,10 @@ export default function DemoPage() {
                           ? 'Call finished. Check the dashboard for your statement / reference code.'
                           : 'Session ended. Check the dashboard for your statement.'}
                   </div>
-                  {webResult?.transcript && (
-                    <p style={{ fontSize: 14, opacity: 0.8, marginBottom: 20, textAlign: 'left' }}>
-                      Transcript preview: {webResult.transcript.slice(0, 280)}
-                      {webResult.transcript.length > 280 ? '…' : ''}
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <div
+                    className="demo-ended-actions"
+                    style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}
+                  >
                     {(webResult?.ref_code || liveRefCode) && (
                       <Link
                         href={`/dashboard/${webResult?.ref_code || liveRefCode}`}
@@ -494,6 +500,16 @@ export default function DemoPage() {
                       <span className="cta-lbl">New session</span>
                     </button>
                   </div>
+                  {(webResult?.dialogue?.length || webResult?.transcript) && (
+                    <div style={{ marginTop: 24, textAlign: 'left' }}>
+                      <TranscriptChat
+                        turns={(webResult.dialogue || []) as DialogueTurn[]}
+                        fallbackText={webResult.transcript}
+                        title="مکمل بات چیت"
+                        emptyHint="اس سیشن کی کوئی بات چیت محفوظ نہیں ہوئی۔"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
               <LivePanels
@@ -568,44 +584,44 @@ function LivePanels({
   onDone: () => void;
 }) {
   return (
-    <>
-      <div className="find-panel">
-        <div className="find-head">
-          <span className="find-n">LIVE</span>
-          PIPELINE FEED
-        </div>
-        <div className="find-body" style={{ fontFamily: 'monospace', fontSize: 12 }}>
-          {(activity || []).slice(0, 8).map((item, idx) => (
-            <div key={idx} style={{ marginBottom: 8 }}>
-              [{item.channel || '?'}] {item.type || 'event'} · {item.status || '—'}
-              {item.detail ? ` — ${String(item.detail).slice(0, 80)}` : ''}
+    <div className="find-panel demo-pipeline">
+      <div className="find-head">
+        <span className="find-n">LIVE</span>
+        <span className="find-title">Pipeline feed</span>
+      </div>
+      <div className="find-body activity-log-body">
+        {(activity || []).slice(0, 8).map((item, idx) => (
+          <div key={idx} className="activity-log-line">
+            [{item.channel || '?'}] {item.type || 'event'} · {item.status || '—'}
+            {item.detail ? ` — ${String(item.detail).slice(0, 80)}` : ''}
+          </div>
+        ))}
+        {!activity?.length &&
+          (callsList || []).slice(0, 6).map((item, idx) => (
+            <div key={idx} className="activity-log-line">
+              {String(item.status || item.state || 'unknown')}
+              {item.channel ? ` · ${String(item.channel)}` : ''}
+              {item.to ? ` · ${String(item.to)}` : ''}
             </div>
           ))}
-          {!activity?.length &&
-            (callsList || []).slice(0, 6).map((item, idx) => (
-              <div key={idx} style={{ marginBottom: 8 }}>
-                {String(item.status || item.state || 'unknown')}
-                {item.channel ? ` · ${String(item.channel)}` : ''}
-                {item.to ? ` · ${String(item.to)}` : ''}
-              </div>
-            ))}
-          {!activity?.length && !callsList?.length && 'Waiting for session updates…'}
-        </div>
+        {!activity?.length && !callsList?.length && (
+          <div className="activity-log-empty">Waiting for session updates…</div>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="demo-actions">
         <button type="button" className="cta-btn cta-ghost" onClick={onRefresh}>
           <span className="cta-sq">↻</span>
-          <span className="cta-lbl">Refresh status</span>
+          <span className="cta-lbl">Refresh</span>
         </button>
         <Link href="/calls" className="cta-btn">
           <span className="cta-sq">→</span>
-          <span className="cta-lbl">Calls dashboard</span>
+          <span className="cta-lbl">Calls</span>
         </Link>
         <button type="button" className="cta-btn cta-ghost" onClick={onDone}>
           <span className="cta-sq">■</span>
           <span className="cta-lbl">Done</span>
         </button>
       </div>
-    </>
+    </div>
   );
 }
