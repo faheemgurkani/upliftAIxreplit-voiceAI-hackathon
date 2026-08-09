@@ -75,6 +75,34 @@ async def get_readback_audio(
     return FileResponse(path, media_type="audio/mpeg", filename=f"{ref_code}-readback.mp3")
 
 
+@router.get("/{ref_code}/protection-pdf")
+async def get_protection_referral_pdf(
+    ref_code: str,
+    db: Database = Depends(get_db),
+):
+    stmt = db.get_statement_by_ref(ref_code)
+    if stmt is None:
+        raise HTTPException(status_code=404, detail="Reference code not found")
+    if not stmt.protection_referral_generated:
+        raise HTTPException(status_code=404, detail="Protection referral not generated")
+
+    path = Path(stmt.protection_referral_url) if stmt.protection_referral_url else None
+    if path is None or not path.exists():
+        from app.config import get_settings
+
+        alt = Path(get_settings().local_audio_dir) / stmt.ref_code / "protection_referral.pdf"
+        if alt.exists():
+            path = alt
+        else:
+            raise HTTPException(status_code=404, detail="Protection PDF missing on disk")
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"{ref_code}-protection-referral.pdf",
+    )
+
+
 @router.post("/{ref_code}/pdf")
 async def generate_pdf(
     ref_code: str,

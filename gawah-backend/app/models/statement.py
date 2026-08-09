@@ -118,12 +118,18 @@ class StatementRecord(BaseModel):
     raw_transcript: Optional[str] = None
 
     def to_api_detail(self) -> Dict[str, Any]:
+        # Browser-safe URL (filesystem paths are not fetchable from the SPA)
+        referral_url = (
+            f"/api/statements/{self.ref_code}/protection-pdf"
+            if self.protection_referral_generated
+            else self.protection_referral_url
+        )
         protection = ProtectionReferral(
             status="referral_generated" if self.protection_referral_generated else "none",
             applicable_act=self.applicable_protection_act,
             grounds=self._protection_grounds(),
             province=None,
-            referral_pdf_url=self.protection_referral_url,
+            referral_pdf_url=referral_url,
         )
         core = CoreFields(
             time_of_incident=self.time_of_incident,

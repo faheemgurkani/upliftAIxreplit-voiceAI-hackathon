@@ -66,7 +66,9 @@ def compute_kpis(db: Database | None = None) -> Dict[str, Any]:
         "total_statements": total,
         "pending_review": pending,
         "urgent": urgent,
+        "urgent_count": urgent,  # frontend alias
         "clusters": len(clusters),
+        "cluster_count": len(clusters),  # frontend alias
         "avg_corroboration": avg_corr,
         "witness_confirmed": confirmed,
         "inconsistency_flagged": with_flags,
