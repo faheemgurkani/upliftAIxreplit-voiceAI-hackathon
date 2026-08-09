@@ -198,7 +198,8 @@ GAWAH_ASSISTANT_CONFIG = {
         "tts": {
             "default": {
                 "provider": "upliftai",
-                "voiceId": "ai_lwr_f_fb",
+                # Verified Singapore Orator voice (same family as phone / readback)
+                "voiceId": "v_8eelc901",
                 "outputFormat": "MP3_22050_32",
             }
         },
