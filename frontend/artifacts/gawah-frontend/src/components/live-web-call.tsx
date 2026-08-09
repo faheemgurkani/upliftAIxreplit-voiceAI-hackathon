@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AudioTrack,
-  BarVisualizer,
   RoomAudioRenderer,
   StartAudio,
   UpliftAIRoom,
   useLocalParticipant,
-  useTracks,
   useTranscriptions,
   useUpliftAIRoom,
   useVoiceAssistant,
 } from '@upliftai/assistants-react';
-import { Track } from 'livekit-client';
 import { buildGawahTools, type ToolEvent } from '@/lib/gawah-tools';
 import {
   completeWebSession,
@@ -52,12 +48,9 @@ function CallBody({
   tools: ReturnType<typeof buildGawahTools>;
 }) {
   const { isConnected, agentParticipant, upsertTools } = useUpliftAIRoom();
-  const { state, audioTrack, agentTranscriptions } = useVoiceAssistant();
+  const { state, agentTranscriptions } = useVoiceAssistant();
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const transcriptions = useTranscriptions();
-  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
-  const agentMicTrack = tracks.find((t) => !t.participant.isLocal);
-  const playTrack = audioTrack || agentMicTrack;
 
   const [recSeconds, setRecSeconds] = useState(0);
   const [ending, setEnding] = useState(false);
@@ -338,13 +331,6 @@ function CallBody({
           </div>
 
           <StartAudio label="Tap to hear the agent" className="call-start-audio" />
-
-          {playTrack && (
-            <div className="call-viz">
-              <AudioTrack trackRef={playTrack} />
-              <BarVisualizer state={state} trackRef={playTrack} barCount={18} />
-            </div>
-          )}
 
           <div className="call-controls" role="group" aria-label="Call controls">
             <button

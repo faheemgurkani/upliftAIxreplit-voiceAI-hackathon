@@ -1,11 +1,14 @@
 # Gawah Backend
 
-FastAPI implementation of the full Gawah specification:
+FastAPI implementation of the Gawah specification:
 
 - Uplift AI Realtime Assistants + TTS/STT (Singapore region)
+- Adhoc web sessions with full Phase 0–4 instructions + tools
+- Web recording pipeline (mic upload → STT → §161 structure → statement)
+- Live dialogue persistence (Agent / گواہ turns from the browser)
 - Five CrPC §161 tool handlers
-- Section 16 consistency engine (realtime + post-call)
-- Section 17 multi-witness corroboration + collusion warning
+- Consistency engine (realtime + post-call)
+- Multi-witness corroboration + collusion warning
 - Witness protection referral generation
 - KPI / ROI proxies + edge-case coverage metrics
 - NGO lawyer dashboard APIs
@@ -36,6 +39,22 @@ cp gawah-backend/.env.example gawah-backend/.env
 
 Docs: http://localhost:8000/docs
 
+## Environment (important)
+
+Authoritative file: **`gawah-backend/.env`** (template: `.env.example`).
+
+| Variable | Purpose |
+|----------|---------|
+| `UPLIFTAI_API_KEY` | Live WebRTC + PSTN + STT/TTS |
+| `UPLIFT_BASE_URL` | Must be Singapore: `https://ap-southeast-1.api.upliftai.org/v1` |
+| `UPLIFT_ASSISTANT_ID` | Optional; `ensure_assistant()` creates/syncs |
+| `UPLIFT_TTS_VOICE_ID` | Default **`defense-advocate`** (male Standard Urdu) |
+| `UPLIFT_TTS_OUTPUT_FORMAT` | Default `MP3_22050_128` |
+| `OPENROUTER_API_KEY` | Statement structuring / flags |
+| `CORS_ORIGINS` | Include `http://localhost:5173` for the Vite app |
+
+Agent prompts live in `app/prompts/` (`agent_instructions.txt`, `agent_config.py`). Language lock: spoken lines in **Urdu Nastaliq** so LiveKit captions match audio.
+
 ## Demo seed
 
 ```bash
@@ -44,19 +63,37 @@ python scripts/setup.py seed
 .venv/bin/python gawah-backend/scripts/seed_demo.py --replace
 ```
 
+Seeds refs **NBRA7K**, **SHPK2M**, **NBRC9Q** + Hussain Abad cluster + linked calls.
+
 ## Smoke test
 
 ```bash
 .venv/bin/python gawah-backend/scripts/smoke_test.py
 ```
 
-## Phone calling (report an incident by PSTN)
+## Web browser path
+
+1. `POST /api/sessions/create` → adhoc session (`token`, `wsUrl`, `callId`)
+2. Frontend connects with `@upliftai/assistants-react` (`UpliftAIRoom`)
+3. Live captions from LiveKit transcriptions (Agent / گواہ)
+4. Continuous MediaRecorder on the witness mic
+5. `POST /api/sessions/web/{callId}/recording` — multipart:
+   - `file` — audio (`webm` / etc.)
+   - `language` — default `ur`
+   - `participantName` — default `Witness`
+   - `dialogue` — optional JSON array `[{ "role": "agent"|"witness", "text", "id?", "at?" }]`
+6. Pipeline: save audio → STT → structure §161 → save statement → return `ref_code`, `transcript`, `dialogue`
+7. `POST /api/sessions/web/{callId}/complete` — mark ended + ensure dashboard statement
+
+Implementation: `app/services/web_call_pipeline.py`, router `app/routers/sessions.py`.
+
+## Phone calling (PSTN)
 
 Uplift AI places **outbound** calls to Pakistani mobiles only (Singapore region). You do **not** need your own caller ID.
 
 ### Call me (easiest)
 
-1. Backend running with `UPLIFTAI_API_KEY` and `UPLIFT_BASE_URL=https://ap-southeast-1.api.upliftai.org/v1`
+1. Backend running with `UPLIFTAI_API_KEY` and Singapore `UPLIFT_BASE_URL`
 2. Open frontend **Demo → Phone call**, enter `+92…` / `03…`, click **Call me**
 3. Answer the phone — Gawah runs the §161 interview
 4. Or via API:
@@ -67,40 +104,38 @@ curl -X POST http://localhost:8000/api/sessions/call \
   -d '{"to":"+923001234567","participantName":"Witness"}'
 ```
 
-Poll status + Uplift session metadata: `GET /api/sessions/calls`
-
-Force pull recording/transcript (when Uplift exposes them):
-`POST /api/sessions/calls/{callId}/refresh-artifacts`
-
-Cached recording (if downloaded): `GET /api/sessions/calls/{callId}/recording`
+Poll status: `GET /api/sessions/calls`  
+Force pull artifacts: `POST /api/sessions/calls/{callId}/refresh-artifacts`  
+Cached recording: `GET /api/sessions/calls/{callId}/recording`
 
 ### Receive a call (witness dials in)
 
 Uplift does not expose inbound DIDs. Pattern used here:
 
-1. Buy/configure a **Twilio** Pakistani (or reachable) number
-2. Expose your API publicly (`ngrok http 8000`)
-3. Set the number’s Voice webhook to `POST https://<public>/api/sessions/twilio-webhook`
+1. Configure a **Twilio** number
+2. Expose API publicly (`ngrok http 8000`)
+3. Voice webhook → `POST https://<public>/api/sessions/twilio-webhook`
 4. Set `TWILIO_*` in `.env` (optional metadata)
-5. Witness dials Twilio → TwiML greets them → we **call them back** via Uplift with the Gawah agent
+5. Witness dials Twilio → TwiML → **callback** via Uplift with the Gawah agent
 
-Full Twilio Media Streams ↔ WebRTC bridge is still deferred; callback is the hackathon-ready receive path.
-
-Only call numbers that consent (your phone / teammates). PTA + Uplift terms forbid spam.
+Only call numbers that consent. PTA + Uplift terms forbid spam.
 
 ## Key routes
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/sessions/create` | Uplift createSession (demo fallback if no key) |
-| POST | `/api/sessions/call` | Outbound PSTN call via Uplift (`to` = PK mobile) |
-| GET | `/api/sessions/calls` | Poll calls + sync Uplift session metadata/artifacts |
-| GET | `/api/sessions/calls/{id}` | Single call detail (fetches Uplift session) |
-| POST | `/api/sessions/calls/{id}/refresh-artifacts` | Re-fetch recording/transcript if available |
-| GET | `/api/sessions/calls/{id}/recording` | Locally cached call recording |
+| POST | `/api/sessions/create` | Adhoc WebRTC session (demo fallback if no key) |
+| POST | `/api/sessions/call` | Outbound PSTN via Uplift |
+| POST | `/api/sessions/web/{id}/recording` | Mic upload + dialogue → statement |
+| POST | `/api/sessions/web/{id}/complete` | End web session |
+| POST | `/api/sessions/web/{id}/events` | Pipeline / activity events |
+| GET | `/api/sessions/calls` | Poll calls + sync Uplift metadata |
+| GET | `/api/sessions/calls/{id}` | Single call detail |
+| POST | `/api/sessions/calls/{id}/refresh-artifacts` | Re-fetch recording/transcript |
+| GET | `/api/sessions/calls/{id}/recording` | Locally cached recording |
 | POST | `/api/sessions/twilio-webhook` | Inbound Twilio → Uplift callback TwiML |
 | POST | `/api/tools/save_witness_statement` | Save + TTS readback + queue engines |
-| POST | `/api/tools/flag_inconsistency` | Realtime §16 flag |
+| POST | `/api/tools/flag_inconsistency` | Realtime inconsistency flag |
 | POST | `/api/tools/flag_intimidation` | Urgent escalation + NGO webhook |
 | POST | `/api/tools/enable_privacy_mode` | Anonymous mode |
 | POST | `/api/tools/assess_protection_need` | Protection referral |
@@ -108,21 +143,25 @@ Only call numbers that consent (your phone / teammates). PTA + Uplift terms forb
 | GET | `/api/statements/{refCode}` | Statement detail |
 | POST | `/api/statements/{refCode}/review` | Officer/NGO review |
 | GET | `/api/statements/{refCode}/audio` | Readback MP3 |
+| GET | `/api/statements/{refCode}/protection-pdf` | Protection referral PDF |
 | GET | `/api/dashboard/statements` | Filterable list |
 | GET | `/api/dashboard/clusters` | Incident clusters |
 | GET | `/api/dashboard/clusters/{id}` | Corroboration map |
-| POST | `/api/internal/trigger-corroboration-analysis` | Queue §16/§17 |
 | GET | `/api/kpis` | KPIs + edge-case coverage + ROI proxies |
 
 ## Uplift AI usage
 
 1. Set `UPLIFTAI_API_KEY` (Singapore base URL default).
-2. Optionally set `UPLIFT_ASSISTANT_ID`, or let `ensure_assistant()` create one with full agent instructions + tools from `app/prompts/`.
-3. Frontend/demo calls `/api/sessions/create` → receives `token` + `wsUrl` for `@upliftai/assistants-react`.
-4. Tool invocations from the agent hit `/api/tools/*`.
-5. Readback audio via `POST /v1/synthesis/text-to-speech` (voice `ai_lwr_f_fb`).
+2. Optionally set `UPLIFT_ASSISTANT_ID`, or let `ensure_assistant()` create one and **sync** instructions/tools/TTS/STT from `app/prompts/`.
+3. Web demos prefer **adhoc** `createSession` with full current config (`UpliftService.create_adhoc_web_session`) so prompts stay fresh.
+4. Default TTS voice: **`defense-advocate`** (male, Standard Urdu). Override with `UPLIFT_TTS_VOICE_ID`.
+5. STT language forced to **`ur`** for live captions + witness transcription.
+6. Tool invocations from the agent hit `/api/tools/*`.
+7. Readback audio via `POST /v1/synthesis/text-to-speech` using the configured voice id.
 
 Phone calling: only on `https://ap-southeast-1.api.upliftai.org/v1` — see `UpliftService.place_call`.
+
+Voice library: [docs.upliftai.org/orator_voices](https://docs.upliftai.org/orator_voices).
 
 ## KPIs / edge cases
 
@@ -130,6 +169,8 @@ Phone calling: only on `https://ap-southeast-1.api.upliftai.org/v1` — see `Upl
 
 - `roi_proxies` — literacy barrier removed, informed consent rate, protection pipeline, lawyer crossref savings
 - `edge_case_coverage` — intimidation, privacy, inconsistency, delay doctrine, incomplete recovery, multi-witness, language access, protection
+
+Also exposes aliases such as `urgent_count` / `cluster_count` where the dashboard expects them.
 
 Corroboration disclaimer (always): *Pre-litigation intelligence only — not admissible corroboration under CrPC Section 162.*
 

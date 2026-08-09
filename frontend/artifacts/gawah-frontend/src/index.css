@@ -621,6 +621,11 @@ ul.e-bullets li:hover::before {
   max-height: 100%;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.transcript-preview--live .find-head {
+  flex-shrink: 0;
 }
 .transcript-preview--live .find-title {
   letter-spacing: 0.06em;
@@ -628,7 +633,8 @@ ul.e-bullets li:hover::before {
 .transcript-preview--live .transcript-chat {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: none; /* constrained by parent overflow, not content growth */
+  max-height: none;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -642,44 +648,50 @@ ul.e-bullets li:hover::before {
   word-break: break-word;
 }
 
-/* Live call: call controls left · dialogue right */
+/* Live call: call controls left · dialogue right.
+   Left panel defines height; transcript is absolutely filled so its
+   content never expands the row — only scrolls inside. */
 .live-call-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 1.1fr) minmax(260px, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-wrap: nowrap;
   align-items: stretch;
-  /* Cap row height to the call panel so transcript scrolls instead of growing */
-  grid-auto-rows: minmax(0, auto);
+  gap: 16px;
+}
+.live-call-panel {
+  flex: 1.1 1 0;
+  min-width: 0;
 }
 .live-call-transcript {
+  flex: 1 1 0;
   min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* Match typical call panel height; scroll inside, never grow the page */
-  max-height: min(520px, 70vh);
+  position: relative;
+  /* No in-flow content height → row height comes from the call panel */
   align-self: stretch;
 }
-.live-call-transcript .transcript-preview {
-  flex: 1 1 auto;
-  min-height: 0;
+.live-call-transcript > .transcript-preview {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  margin: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.live-call-panel {
-  min-width: 0;
-}
 @media (max-width: 860px) {
   .live-call-layout {
-    grid-template-columns: 1fr;
-  }
-  .live-call-transcript {
-    order: 1;
-    max-height: min(360px, 50vh);
+    flex-direction: column;
   }
   .live-call-panel {
-    order: 0;
+    flex: none;
+    width: 100%;
+  }
+  .live-call-transcript {
+    flex: none;
+    width: 100%;
+    position: relative;
+    /* Fixed cap on stacked layout — scroll inside */
+    height: min(360px, 50vh);
   }
 }
 
@@ -688,7 +700,6 @@ ul.e-bullets li:hover::before {
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  max-height: 360px;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--e-bg);
@@ -743,13 +754,6 @@ ul.e-bullets li:hover::before {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--e-muted);
-}
-.call-viz {
-  margin-bottom: 16px;
-  padding: 16px;
-  border: 2px solid var(--e-fg);
-  background: var(--e-paper);
-  min-height: 72px;
 }
 .call-controls {
   display: flex;

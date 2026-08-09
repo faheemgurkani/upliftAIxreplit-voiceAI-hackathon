@@ -83,6 +83,9 @@ Some voices to try (full list with samples: [docs.upliftai.org/orator_voices](ht
 | Nostalgic News | `v_30s70t3a` | Classic Pakistani news anchor |
 | Dada Jee | `v_yypgzenx` | Storytelling, suspenseful |
 | Gen Z | `v_kwmp7zxt` | Fast, contemporary |
+| **Defense Advocate (Gawah default)** | **`defense-advocate`** | **Male, Standard Urdu, precise legal register** |
+
+> **Gawah note:** The backend defaults `UPLIFT_TTS_VOICE_ID=defense-advocate` for agent + readback. Agent instructions require **Nastaliq Urdu** for spoken lines so live WebRTC captions match the voice.
 
 ### Lower latency from Pakistan — Singapore region 🇸🇬
 

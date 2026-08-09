@@ -1,12 +1,13 @@
 # Gawah — Backend PRD for Next.js Frontend Design
 
-**Audience:** Frontend / product design (Next.js App Router)  
-**Backend:** FastAPI at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`)  
+**Audience:** Frontend / product design  
+**Primary UI:** Vite app at `frontend/artifacts/gawah-frontend` (legacy Next.js under `client/` is optional)  
+**Backend:** FastAPI — Vite proxies `/api` → `http://localhost:8000`  
 **Interactive API docs:** `http://localhost:8000/docs`  
 **Status:** Hackathon MVP — live-tested with Uplift AI + OpenRouter  
 **Auth:** None yet (open NGO demo dashboard; add later)
 
-This document is the contract for designing and wiring the Next.js UI. When you bring a frontend template, connect it to these endpoints and shapes.
+This document is the contract for wiring the demo UI to these endpoints and shapes.
 
 ---
 
@@ -62,10 +63,14 @@ Optional later: `/lookup` public status by ref code (limited fields).
 ## 5. Feature catalog (backend → UI mapping)
 
 ### 5.1 Voice demo session
-- **Backend:** `POST /api/sessions/create` → `{ token, wsUrl, roomName, demo? }`
+- **Backend:** `POST /api/sessions/create` → `{ token, wsUrl, roomName, callId/sessionId, demo? }`
 - **UI:** “Start voice session” → connect WebRTC room → mic on → show live status
+- **Layout:** call controls **left**; live Agent/گواہ dialogue **right** (fixed height, scrolls)
+- **End call:** `POST /api/sessions/web/{callId}/recording` (+ optional `dialogue` JSON) → STT → statement; then `/complete`
+- **TTS / language:** `defense-advocate` (male Standard Urdu); agent output Nastaliq for captions; STT `ur`
 - **Tools** (agent → backend, usually not called by UI directly): save statement, flag inconsistency/intimidation, privacy mode, protection assess, confirm
-- **UI should show:** connecting / live / ended; last tool result if demo client simulates tools
+- **UI should show:** connecting / live / ended; full dialogue after end (no truncation); activity log
+- **Details:** [`WEB_CALL_AND_DIALOGUE.md`](./WEB_CALL_AND_DIALOGUE.md)
 
 ### 5.2 Statement intake (5 legal fields)
 Stored / displayed fields:
@@ -179,6 +184,58 @@ Content-Type: application/json
 }
 ```
 Use `token` + `wsUrl` with Uplift React SDK (`UpliftAIRoom`).
+
+Response also includes a tracked **`callId` / `sessionId`** used for web recording + events.
+
+Agent TTS defaults to male Standard Urdu (`defense-advocate`); STT language `ur`. Spoken agent text should be Nastaliq Urdu so live captions match audio.
+
+### 6.2a Web activity events
+```http
+POST /api/sessions/web/{callId}/events
+{ "type": "webrtc_connected", "detail": "…", "status": "connected" }
+```
+
+### 6.2b Upload web recording (+ optional dialogue)
+```http
+POST /api/sessions/web/{callId}/recording
+Content-Type: multipart/form-data
+
+file: <audio/webm>
+language: ur
+participantName: Witness
+dialogue: [{"role":"agent","text":"…","id":"…"},{"role":"witness","text":"…"}]   # optional JSON string
+```
+
+```json
+{
+  "ok": true,
+  "call_id": "…",
+  "ref_code": "X5QB2H",
+  "status": "completed",
+  "transcript": "ایجنٹ: …\n\nگواہ: …",
+  "witness_transcript": "…",
+  "dialogue": [
+    { "role": "agent", "text": "السلام علیکم۔…", "id": "…" },
+    { "role": "witness", "text": "…", "id": "…" }
+  ],
+  "stt_ok": true,
+  "label": "Completed — web testimony processed"
+}
+```
+
+**UI contract:**
+
+- During the call: show LiveKit transcriptions as Agent / گواہ chat (right of call panel; **fixed height, scroll inside**).
+- On end: show full `dialogue` (preferred) or `transcript` — **do not truncate** for display.
+- §161 fields are structured from witness-only text (dialogue witness turns or STT).
+
+### 6.2c Complete web session
+```http
+POST /api/sessions/web/{callId}/complete
+→ { "ok": true, "item": { …tracked call… } }
+```
+
+Marks the session ended and ensures a dashboard statement exists when transcript/recording is available.
 
 ### 6.3 List statements
 ```http

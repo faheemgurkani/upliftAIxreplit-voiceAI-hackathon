@@ -2,7 +2,8 @@
 
 > **Hackathon demos use the Vite app**, not this folder:  
 > `frontend/artifacts/gawah-frontend` via `python scripts/setup.py dev`  
-> See [`../docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md).
+> See [`../README.md`](../README.md) and [`../docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md).  
+> Live web dialogue + recording pipeline are implemented only in the Vite app.
 
 Next.js 14 App Router prototype for NGO/lawyer review.
 

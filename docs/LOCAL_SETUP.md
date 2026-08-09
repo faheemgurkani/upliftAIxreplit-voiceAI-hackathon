@@ -117,6 +117,13 @@ OPENROUTER_API_KEY=your_key
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
+Optional (defaults are fine for the hackathon demo):
+
+```env
+UPLIFT_TTS_VOICE_ID=defense-advocate   # male Standard Urdu
+UPLIFT_ASSISTANT_ID=                   # leave empty to create/sync on first call
+```
+
 Frontend (usually leave blank — Vite proxies `/api` → `:8000`):
 
 ```env
@@ -137,12 +144,17 @@ Never commit real secrets. Ask a teammate for keys out-of-band.
 2. **Clusters** → Mohalla Hussain Abad (3 statements, collusion check)  
 3. **Calls** → three completed sessions linked to those refs  
 4. **Demo** → live web call (needs Uplift key + mic)
+   - Left: call controls (mic / end)
+   - Right: **live Agent ↔ گواہ dialogue** (fixed height, scrolls as history grows)
+   - On End: mic recording uploads → STT → §161 fields → ref code + full dialogue chat
 
 Re-seed anytime:
 
 ```bash
 python scripts/setup.py seed
 ```
+
+Start a **new** web session after pulling agent/prompt changes — adhoc config is applied per session.
 
 ---
 
@@ -177,6 +189,8 @@ Windows activate: `.venv\Scripts\Activate.ps1`
 | Port 8000 / 5173 in use | Stop other process, or change port in vite `.env` / uvicorn `--port` |
 | Dashboard empty | `python scripts/setup.py seed` |
 | Live call fails | Set `UPLIFTAI_API_KEY`, confirm `UPLIFT_BASE_URL` is Singapore, check `/health` |
+| Captions in English / Roman | Agent must use Nastaliq; restart a **new** Demo session after pull. STT language is forced to `ur`. |
+| No dialogue turns live | Uplift/LiveKit must stream transcriptions; after End, witness STT still fills the chat |
 | Frontend API 404 | Backend must be running; leave `VITE_API_URL` empty so the proxy works |
 | Windows execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` then re-run `setup.ps1` |
 | Python not found on Windows | Install from python.org with **Add to PATH**, use `py -3` |
