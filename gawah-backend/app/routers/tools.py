@@ -96,6 +96,30 @@ async def save_witness_statement(
             {"ref_code": ref_code, "language": args.language_of_call},
         )
 
+        # Stream statement onto the tracked call row so /calls ↔ /dashboard stay linked
+        tracked = db.get_call(session_id)
+        if tracked:
+            from datetime import datetime, timezone
+
+            events = list(tracked.get("events") or [])
+            events.append(
+                {
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "type": "statement_saved",
+                    "detail": f"Tool path saved statement {ref_code}",
+                    "ref_code": ref_code,
+                }
+            )
+            db.upsert_call(
+                {
+                    "call_id": session_id,
+                    "ref_code": ref_code,
+                    "statement_pipeline_status": "linked",
+                    "events": events[-80:],
+                    "label": tracked.get("label") or "Statement on dashboard",
+                }
+            )
+
         # Background: Section 16 + 17 (never block the call)
         background.add_task(_post_save_jobs, ref_code)
 

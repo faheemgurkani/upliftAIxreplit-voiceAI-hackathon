@@ -187,7 +187,11 @@ class UpliftService:
             return response.content
 
     async def store_readback_audio(self, ref_code: str, text: str) -> Optional[str]:
-        audio = await self.synthesize_speech(text)
+        # Never block statement persistence on TTS outages
+        try:
+            audio = await self.synthesize_speech(text)
+        except Exception:
+            return None
         if not audio:
             return None
 

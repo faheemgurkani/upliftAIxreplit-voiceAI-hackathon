@@ -18,9 +18,21 @@ from fastapi.testclient import TestClient
 
 from app.db.database import reset_db_for_tests
 from app.main import app
+from app.services import uplift_service as uplift_mod
+
+
+async def _stub_readback(self, ref_code: str, text: str):  # noqa: ARG001
+    path = Path(self.settings.local_audio_dir) / ref_code
+    path.mkdir(parents=True, exist_ok=True)
+    file_path = path / "readback.mp3"
+    file_path.write_bytes(b"ID3stub")
+    return str(file_path)
 
 
 def main() -> None:
+    # Avoid hanging the smoke suite on live TTS
+    uplift_mod.UpliftService.store_readback_audio = _stub_readback  # type: ignore[method-assign]
+
     reset_db_for_tests()
     store = Path(os.environ["LOCAL_DB_PATH"])
     if store.exists():

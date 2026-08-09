@@ -20,6 +20,10 @@ from app.services.call_tracker import (
     normalize_call_status,
     persistable_fields,
 )
+from app.services.call_statement_pipeline import (
+    ensure_statement_from_call,
+    maybe_stream_call_to_dashboard,
+)
 from app.services.llm_service import LLMService, get_llm_service
 from app.services.phone_utils import CALL_INSTRUCTIONS, normalize_pakistan_phone
 from app.services.uplift_service import UpliftService, get_uplift_service
@@ -111,6 +115,22 @@ async def _sync_one_call(
     merged = merge_uplift_session(local, remote_payload, artifacts=artifacts)
     merged["call_id"] = call_id
     db.upsert_call(persistable_fields(merged))
+
+    # Real-time stream: completed phone calls with transcript/recording → dashboard
+    try:
+        streamed = await maybe_stream_call_to_dashboard(
+            call=merged,
+            db=db,
+            uplift=uplift,
+            llm=get_llm_service(),
+        )
+        if streamed and streamed.get("ok") and streamed.get("ref_code"):
+            refreshed = db.get_call(call_id) or merged
+            refreshed["ref_code"] = streamed["ref_code"]
+            return refreshed
+    except Exception:  # noqa: BLE001 — never break call list sync
+        pass
+
     return merged
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -605,18 +625,40 @@ async def list_phone_calls(
         elif remote:
             merged = merge_uplift_session(call, remote)
             db.upsert_call(persistable_fields({**merged, "call_id": cid}))
+            try:
+                streamed = await maybe_stream_call_to_dashboard(
+                    call=merged,
+                    db=db,
+                    uplift=uplift,
+                    llm=get_llm_service(),
+                )
+                if streamed and streamed.get("ok") and streamed.get("ref_code"):
+                    merged = db.get_call(cid) or merged
+            except Exception:  # noqa: BLE001
+                pass
             items.append(merged)
         else:
             status = call.get("status") or call.get("state") or "unknown"
-            items.append(
-                {
-                    **call,
-                    "status": status,
-                    "label": call.get("label")
-                    or human_label(status, call.get("outcome")),
-                    "mocked": bool(call.get("mocked", False)),
-                }
-            )
+            row = {
+                **call,
+                "status": status,
+                "label": call.get("label")
+                or human_label(status, call.get("outcome")),
+                "mocked": bool(call.get("mocked", False)),
+            }
+            # Local completed phone calls with transcript still stream to dashboard
+            try:
+                streamed = await maybe_stream_call_to_dashboard(
+                    call=row,
+                    db=db,
+                    uplift=uplift,
+                    llm=get_llm_service(),
+                )
+                if streamed and streamed.get("ok") and streamed.get("ref_code"):
+                    row = db.get_call(cid) or row
+            except Exception:  # noqa: BLE001
+                pass
+            items.append(row)
 
     counts = {
         "total": len(items),
@@ -637,6 +679,34 @@ async def list_phone_calls(
             "captured when the platform exposes them (docs: async after call ends)."
         ),
     }
+
+
+@router.post("/calls/{call_id}/process-statement")
+async def process_call_statement(
+    call_id: str,
+    force: bool = Query(False, description="Re-run even if already linked"),
+    language: str = Query("ur"),
+    uplift: UpliftService = Depends(get_uplift_service),
+    llm: LLMService = Depends(get_llm_service),
+    db: Database = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Explicit call → dashboard stream.
+
+    Builds (or links) a statement from call transcript/recording so the
+    dashboard shows live operations — not demo-seed data.
+    """
+    result = await ensure_statement_from_call(
+        call_id=call_id,
+        db=db,
+        uplift=uplift,
+        llm=llm,
+        language=language,
+        force=force,
+    )
+    if not result.get("ok") and result.get("status_code") == 404:
+        raise HTTPException(status_code=404, detail=result.get("detail") or "Call not found")
+    return result
 
 
 @router.get("/calls/{call_id}")
