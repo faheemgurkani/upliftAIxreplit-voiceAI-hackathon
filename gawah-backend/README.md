@@ -10,18 +10,39 @@ FastAPI implementation of the full Gawah specification:
 - KPI / ROI proxies + edge-case coverage metrics
 - NGO lawyer dashboard APIs
 
-## Run
+## Prefer the repo setup script
+
+From repo root (macOS / Windows / Linux):
+
+```bash
+python scripts/setup.py install
+python scripts/setup.py dev
+# or API only:
+python scripts/setup.py backend
+```
+
+Teammate guide: [`../docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md).
+
+## Run (manual)
 
 ```bash
 # from repo root
-source .venv/bin/activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 .venv/bin/pip install -r gawah-backend/requirements.txt
 cp gawah-backend/.env.example gawah-backend/.env
 
-.venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --port 8000
+.venv/bin/uvicorn app.main:app --app-dir gawah-backend --reload --host 0.0.0.0 --port 8000
 ```
 
 Docs: http://localhost:8000/docs
+
+## Demo seed
+
+```bash
+python scripts/setup.py seed
+# or:
+.venv/bin/python gawah-backend/scripts/seed_demo.py --replace
+```
 
 ## Smoke test
 

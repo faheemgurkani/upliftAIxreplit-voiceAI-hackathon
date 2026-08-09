@@ -4,10 +4,12 @@
   "private": true,
   "description": "Uplift AI × Replit Voice AI Hackathon project",
   "scripts": {
-    "dev": "echo \"Wire client + server start scripts once the stack is chosen.\"",
-    "start": "echo \"Wire production start once the stack is chosen.\"",
-    "test": "echo \"No tests yet\" && exit 0",
-    "check-env": "bash scripts/check-env.sh"
+    "setup": "python scripts/setup.py install",
+    "dev": "python scripts/setup.py dev",
+    "seed": "python scripts/setup.py seed",
+    "check": "python scripts/setup.py check",
+    "check-env": "python scripts/setup.py check",
+    "test": "echo \"See tests/README.md and gawah-backend/scripts\" && exit 0"
   },
   "engines": {
     "node": ">=18"

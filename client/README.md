@@ -1,8 +1,12 @@
-# Gawah Client
+# Gawah Client (legacy Next.js)
 
-Next.js 14 App Router dashboard for NGO/lawyer review of Gawah witness statements.
+> **Hackathon demos use the Vite app**, not this folder:  
+> `frontend/artifacts/gawah-frontend` via `python scripts/setup.py dev`  
+> See [`../docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md).
 
-## Setup
+Next.js 14 App Router prototype for NGO/lawyer review.
+
+## Setup (optional)
 
 ```bash
 cd client
