@@ -25,6 +25,7 @@ type DemoState =
   | 'connecting'
   | 'live'
   | 'calling'
+  | 'processing'
   | 'ended'
   | 'error';
 
@@ -342,122 +343,145 @@ export default function DemoPage() {
             </div>
           )}
 
-          {demoState === 'live' && session && webCallId && (
+          {(demoState === 'live' || demoState === 'processing') && session && webCallId && (
             <div className="page-stack">
-              <div className="live-pill">
-                <span className="pulse-dot" />
-                WEB CALL{' '}
-                {String(
-                  trackedCall?.item?.status || session.status || 'LIVE',
-                ).toUpperCase()}
-              </div>
-              <div className="bento">
-                <div className="bento-h">
-                  <span className="dot dot-o" />
-                  SESSION.META
+              {demoState === 'processing' && <AudioProcessingPanel />}
+
+              {/* Keep call UI mounted (hidden) so End-call upload can finish */}
+              <div
+                className="page-stack"
+                hidden={demoState === 'processing'}
+                aria-hidden={demoState === 'processing'}
+              >
+                <div className="live-pill">
+                  <span className="pulse-dot" />
+                  WEB CALL{' '}
+                  {String(
+                    trackedCall?.item?.status || session.status || 'LIVE',
+                  ).toUpperCase()}
                 </div>
-                <div className="bento-body kv-grid">
-                  <div className="kv-k">Call / session ID</div>
-                  <div className="kv-v">{webCallId}</div>
-                  <div className="kv-k">Room</div>
-                  <div className="kv-v">{session.roomName || session.room_name}</div>
-                  <div className="kv-k">Channel</div>
-                  <div className="kv-v">web_browser</div>
-                  <div className="kv-k">Mode</div>
-                  <div className="kv-v">
-                    {canLiveCall ? (
-                      <span className="badge-e badge-teal">Live WebRTC · agent + tools</span>
-                    ) : (
-                      <span className="badge-e badge-amber">
-                        Fallback mic upload — not full agent
-                      </span>
+                <div className="bento">
+                  <div className="bento-h">
+                    <span className="dot dot-o" />
+                    SESSION.META
+                  </div>
+                  <div className="bento-body kv-grid">
+                    <div className="kv-k">Call / session ID</div>
+                    <div className="kv-v">{webCallId}</div>
+                    <div className="kv-k">Room</div>
+                    <div className="kv-v">{session.roomName || session.room_name}</div>
+                    <div className="kv-k">Channel</div>
+                    <div className="kv-v">web_browser</div>
+                    <div className="kv-k">Mode</div>
+                    <div className="kv-v">
+                      {canLiveCall ? (
+                        <span className="badge-e badge-teal">Live WebRTC · agent + tools</span>
+                      ) : (
+                        <span className="badge-e badge-amber">
+                          Fallback mic upload — not full agent
+                        </span>
+                      )}
+                    </div>
+                    {(webResult?.ref_code || liveRefCode) && (
+                      <>
+                        <div className="kv-k">Ref code</div>
+                        <div className="kv-v text-e-accent">
+                          {webResult?.ref_code || liveRefCode}
+                        </div>
+                      </>
                     )}
                   </div>
-                  {(webResult?.ref_code || liveRefCode) && (
-                    <>
-                      <div className="kv-k">Ref code</div>
-                      <div className="kv-v text-e-accent">
-                        {webResult?.ref_code || liveRefCode}
-                      </div>
-                    </>
-                  )}
                 </div>
-              </div>
 
-              {!webResult && canLiveCall && (
-                <LiveSdkBoundary
-                  onError={() => {
-                    setLiveFailed(true);
-                    pushLog(
-                      `[${new Date().toLocaleTimeString()}] Live SDK failed — switching to continuous mic call`,
-                    );
-                  }}
-                >
-                  <LiveWebCall
-                    token={token}
-                    wsUrl={wsUrl}
-                    callId={webCallId}
-                    onLog={pushLog}
-                    onTool={(ev) => {
-                      if (ev.refCode) setLiveRefCode(ev.refCode);
+                {!webResult && canLiveCall && (
+                  <LiveSdkBoundary
+                    onError={() => {
+                      setLiveFailed(true);
+                      pushLog(
+                        `[${new Date().toLocaleTimeString()}] Live SDK failed — switching to continuous mic call`,
+                      );
                     }}
-                    onEnded={(result) => {
-                      if (result?.ref_code) {
-                        setLiveRefCode(result.ref_code);
-                        setWebResult(result);
-                      }
-                      setDemoState('ended');
-                    }}
-                  />
-                </LiveSdkBoundary>
-              )}
+                  >
+                    <LiveWebCall
+                      token={token}
+                      wsUrl={wsUrl}
+                      callId={webCallId}
+                      onLog={pushLog}
+                      onTool={(ev) => {
+                        if (ev.refCode) setLiveRefCode(ev.refCode);
+                      }}
+                      onProcessing={() => {
+                        setDemoState('processing');
+                        pushLog(
+                          `[${new Date().toLocaleTimeString()}] Processing audio — STT → §161 fields…`,
+                        );
+                      }}
+                      onEnded={(result) => {
+                        if (result?.ref_code) {
+                          setLiveRefCode(result.ref_code);
+                          setWebResult(result);
+                        } else if (result) {
+                          setWebResult(result);
+                        }
+                        setDemoState('ended');
+                      }}
+                    />
+                  </LiveSdkBoundary>
+                )}
 
-              {!webResult && !canLiveCall && (
-                <div className="page-stack">
-                  <div className="insight" style={{ borderColor: 'var(--e-warn)' }}>
-                    <span className="insight-lbl">LIVE AGENT UNAVAILABLE</span>
-                    Uplift WebRTC credentials are missing or the SDK failed. The mic upload below
-                    is a backup (STT → statement after End) — it is not the interactive phone-parity
-                    agent. Fix UPLIFTAI_API_KEY / Singapore base URL and retry live web call.
-                  </div>
-                  <WebCallRecorder
-                    callId={webCallId}
-                    autoStart={false}
-                    onLog={pushLog}
-                    onProcessed={(r) => {
-                      setWebResult(r);
-                      setDemoState('ended');
-                    }}
-                    onStatus={(s) =>
-                      pushLog(`[${new Date().toLocaleTimeString()}] Status → ${s}`)
-                    }
-                  />
-                </div>
-              )}
-
-              <div className="find-panel activity-log">
-                <div className="find-head">
-                  <span className="find-n">LIVE</span>
-                  <span className="find-title">Activity log</span>
-                </div>
-                <div className="find-body activity-log-body">
-                  {toolLog.length === 0 && (
-                    <div className="activity-log-empty">Waiting for events…</div>
-                  )}
-                  {toolLog.map((line, i) => (
-                    <div key={`${i}-${line}`} className="activity-log-line">
-                      {line}
+                {!webResult && !canLiveCall && (
+                  <div className="page-stack">
+                    <div className="insight" style={{ borderColor: 'var(--e-warn)' }}>
+                      <span className="insight-lbl">LIVE AGENT UNAVAILABLE</span>
+                      Uplift WebRTC credentials are missing or the SDK failed. The mic upload below
+                      is a backup (STT → statement after End) — it is not the interactive phone-parity
+                      agent. Fix UPLIFTAI_API_KEY / Singapore base URL and retry live web call.
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <WebCallRecorder
+                      callId={webCallId}
+                      autoStart={false}
+                      onLog={pushLog}
+                      onProcessing={() => {
+                        setDemoState('processing');
+                        pushLog(
+                          `[${new Date().toLocaleTimeString()}] Processing audio — STT → §161 fields…`,
+                        );
+                      }}
+                      onProcessed={(r) => {
+                        setWebResult(r);
+                        setDemoState('ended');
+                      }}
+                      onStatus={(s) =>
+                        pushLog(`[${new Date().toLocaleTimeString()}] Status → ${s}`)
+                      }
+                    />
+                  </div>
+                )}
 
-              <LivePanels
-                callsList={callsList?.items}
-                activity={activity?.items}
-                onRefresh={() => refetchCall()}
-                onDone={() => void endWeb()}
-              />
+                <div className="find-panel activity-log">
+                  <div className="find-head">
+                    <span className="find-n">LIVE</span>
+                    <span className="find-title">Activity log</span>
+                  </div>
+                  <div className="find-body activity-log-body">
+                    {toolLog.length === 0 && (
+                      <div className="activity-log-empty">Waiting for events…</div>
+                    )}
+                    {toolLog.map((line, i) => (
+                      <div key={`${i}-${line}`} className="activity-log-line">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <LivePanels
+                  callsList={callsList?.items}
+                  activity={activity?.items}
+                  onRefresh={() => refetchCall()}
+                  onDone={() => void endWeb()}
+                />
+              </div>
             </div>
           )}
 
@@ -465,15 +489,24 @@ export default function DemoPage() {
             <div className="page-stack">
               <div className="bento">
                 <div className="bento-body" style={{ textAlign: 'center', padding: '40px 24px' }}>
-                  <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 24 }}>
+                  <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>
                     {webResult
-                      ? `Web testimony saved · ref ${webResult.ref_code}`
+                      ? `Processing complete · ref ${webResult.ref_code}`
                       : liveRefCode
-                        ? `Live web call saved · ref ${liveRefCode}`
+                        ? `Processing complete · ref ${liveRefCode}`
                         : callInfo
                           ? 'Call finished. Check the dashboard for your statement / reference code.'
                           : 'Session ended. Check the dashboard for your statement.'}
                   </div>
+                  {(webResult?.ref_code || liveRefCode) && (
+                    <p
+                      className="pager-meta"
+                      style={{ marginBottom: 24, maxWidth: 420, marginInline: 'auto' }}
+                    >
+                      Your audio is saved. Open the statement, Calls pipeline, or review the
+                      full dialogue below.
+                    </p>
+                  )}
                   <div
                     className="demo-ended-actions"
                     style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}
@@ -542,6 +575,70 @@ export default function DemoPage() {
         </div>
       </div>
     </PageShell>
+  );
+}
+
+const PROCESSING_STEPS = [
+  { key: 'upload', label: 'Uploading your recording' },
+  { key: 'stt', label: 'Transcribing speech (Urdu STT)' },
+  { key: 'structure', label: 'Structuring §161 fields' },
+  { key: 'save', label: 'Saving to dashboard records' },
+] as const;
+
+function AudioProcessingPanel() {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setStep((s) => (s + 1) % PROCESSING_STEPS.length);
+    }, 2200);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="bento audio-processing">
+      <div className="bento-h">
+        <span className="dot dot-o" />
+        PROCESSING.AUDIO
+      </div>
+      <div className="bento-body">
+        <div className="audio-processing-panel">
+          <div className="audio-processing-orb" aria-hidden>
+            <span className="audio-processing-ring" />
+            <span className="audio-processing-ring audio-processing-ring--delay" />
+            <div className="spinner audio-processing-spinner" />
+          </div>
+          <h2 className="audio-processing-title">Audio is being processed</h2>
+          <p className="audio-processing-sub">
+            Hang tight — we are turning your recording into a transcript and §161 statement.
+            When this finishes you can open it from the dashboard, Calls pipeline, or the
+            dialogue below.
+          </p>
+          <ol className="audio-processing-steps">
+            {PROCESSING_STEPS.map((item, i) => (
+              <li
+                key={item.key}
+                className={
+                  i === step
+                    ? 'audio-processing-step is-active'
+                    : i < step
+                      ? 'audio-processing-step is-done'
+                      : 'audio-processing-step'
+                }
+              >
+                <span className="audio-processing-step-mark" aria-hidden>
+                  {i < step ? '✓' : i === step ? '●' : '○'}
+                </span>
+                <span>{item.label}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="pager-meta" style={{ marginTop: 8 }}>
+            This usually takes a few seconds…
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

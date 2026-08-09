@@ -173,7 +173,7 @@ export const refreshCallArtifacts = (
   });
 
 export const callRecordingUrl = (callId: string): string =>
-  `/api/sessions/calls/${encodeURIComponent(callId)}/recording`;
+  `${getBaseUrl()}/api/sessions/calls/${encodeURIComponent(callId)}/recording`;
 
 export interface WebEventResponse {
   ok: boolean;

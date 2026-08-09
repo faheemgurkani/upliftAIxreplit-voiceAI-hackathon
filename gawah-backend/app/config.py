@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Tuple
@@ -7,6 +8,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
+# Vercel Functions have a writable /tmp only; local JSON/audio must not use the bundle tree.
+_ON_VERCEL = os.environ.get("VERCEL") == "1"
+_DEFAULT_LOCAL_DB = (
+    "/tmp/gawah/gawah_store.json"
+    if _ON_VERCEL
+    else str(_BACKEND_DIR / "data" / "gawah_store.json")
+)
+_DEFAULT_LOCAL_AUDIO = (
+    "/tmp/gawah/audio" if _ON_VERCEL else str(_BACKEND_DIR / "data" / "audio")
+)
 
 
 def _env_files() -> Tuple[str, ...]:
@@ -65,8 +76,9 @@ class Settings(BaseSettings):
 
     case_id_secret: str = "change-me-in-production"
     # Absolute defaults so cwd (repo root vs gawah-backend) does not fork the store.
-    local_db_path: str = str(_BACKEND_DIR / "data" / "gawah_store.json")
-    local_audio_dir: str = str(_BACKEND_DIR / "data" / "audio")
+    # On Vercel, defaults land in /tmp (ephemeral across cold starts without Supabase).
+    local_db_path: str = _DEFAULT_LOCAL_DB
+    local_audio_dir: str = _DEFAULT_LOCAL_AUDIO
 
     @field_validator("debug", mode="before")
     @classmethod

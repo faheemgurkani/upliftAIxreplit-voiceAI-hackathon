@@ -19,17 +19,18 @@ The right panel **matches the call panel height** and **scrolls internally**. It
 
 ## End-of-call flow
 
-1. Client stops recorder and posts multipart to `POST /api/sessions/web/{callId}/recording`.
-2. Optional form field `dialogue`: JSON list of `{ role, text, id?, at? }`.
-3. Backend (`web_call_pipeline.py`):
+1. User clicks **End call** → demo enters `processing` state (animated panel: upload → STT → §161 → dashboard). Live call UI stays mounted but hidden so the upload can finish.
+2. Client stops recorder and posts multipart to `POST /api/sessions/web/{callId}/recording`.
+3. Optional form field `dialogue`: JSON list of `{ role, text, id?, at? }`.
+4. Backend (`web_call_pipeline.py`):
    - Saves audio under local audio dir
    - Runs Uplift STT → `witness_transcript`
    - Merges STT into dialogue if no live witness turns
    - Structures §161 fields from **witness-only** text
    - Persists statement + `ref_code`
    - Returns full `transcript`, `dialogue`, `witness_transcript`
-4. Client calls `POST /api/sessions/web/{callId}/complete`.
-5. Ended UI shows CTAs then the **full** dialogue chat (no truncation).
+5. Client calls `POST /api/sessions/web/{callId}/complete`.
+6. Ended UI: “Processing complete” + CTAs (Open statement / Calls / Dashboard) + full dialogue chat.
 
 ## Do not
 

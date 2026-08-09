@@ -13,6 +13,8 @@ interface Props {
   onLog: (line: string) => void;
   onProcessed?: (result: WebRecordingResponse) => void;
   onStatus?: (status: string) => void;
+  /** Fired immediately when End call is pressed (show processing UI) */
+  onProcessing?: () => void;
   /** Auto-open mic when mounted (call-like). Default true. */
   autoStart?: boolean;
 }
@@ -27,6 +29,7 @@ export function WebCallRecorder({
   onLog,
   onProcessed,
   onStatus,
+  onProcessing,
   autoStart = true,
 }: Props) {
   const [recState, setRecState] = useState<RecState>(autoStart ? 'starting' : 'idle');
@@ -94,6 +97,7 @@ export function WebCallRecorder({
     if (recState !== 'live') return;
     setRecState('ending');
     onStatus?.('processing');
+    onProcessing?.();
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;

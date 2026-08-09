@@ -27,6 +27,8 @@ interface Props {
   callId: string;
   onLog: (line: string) => void;
   onTool?: (ev: ToolEvent) => void;
+  /** Fired immediately when End call is pressed (show processing UI) */
+  onProcessing?: () => void;
   /** Called after hang-up + optional recording→statement pipeline */
   onEnded?: (result?: WebRecordingResponse | null) => void;
 }
@@ -39,11 +41,13 @@ interface Props {
 function CallBody({
   callId,
   onLog,
+  onProcessing,
   onEnded,
   tools,
 }: {
   callId: string;
   onLog: (line: string) => void;
+  onProcessing?: () => void;
   onEnded?: (result?: WebRecordingResponse | null) => void;
   tools: ReturnType<typeof buildGawahTools>;
 }) {
@@ -209,6 +213,7 @@ function CallBody({
     if (endingRef.current) return;
     endingRef.current = true;
     setEnding(true);
+    onProcessing?.();
 
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
@@ -376,6 +381,7 @@ export function LiveWebCall({
   callId,
   onLog,
   onTool,
+  onProcessing,
   onEnded,
 }: Props) {
   const tools = useMemo(
@@ -410,7 +416,13 @@ export function LiveWebCall({
         );
       }}
     >
-      <CallBody callId={callId} onLog={onLog} onEnded={onEnded} tools={tools} />
+      <CallBody
+        callId={callId}
+        onLog={onLog}
+        onProcessing={onProcessing}
+        onEnded={onEnded}
+        tools={tools}
+      />
     </UpliftAIRoom>
   );
 }
