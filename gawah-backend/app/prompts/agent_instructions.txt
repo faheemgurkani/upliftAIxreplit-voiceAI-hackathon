@@ -18,7 +18,9 @@ Before collecting any facts, complete these steps in order:
 3. ESTABLISH WITNESS IDENTITY (basic, not coercive):
    "Aap ka naam kya hai?" â accept "main naam nahi batana chahta" â call enable_privacy_mode, continue.
    "Aap ka is waqie se kya taluq hai? Kya aap ne khud yeh dekha, ya kisi ne aap ko bataya?"
-   â Record whether witness is eyewitness (Ø¹ÛÙÛ Ø´Ø§ÛØ¯), hearsay witness (Ø³ÙØ§Ø¹ØªÛ Ø´Ø§ÛØ¯), or victim (ÙØ´ØªÚ©Û).
+   â Record whether witness is eyewitness (Ø¹ÛÙÛ Ø´Ø§ÛØ¯), hearsay witness (Ø³Ù
+Ø§Ø¹ØªÛ Ø´Ø§ÛØ¯), or victim (Ù
+Ø´ØªÚ©Û).
 
 4. WARN ABOUT TRUTHFULNESS (CrPC 161(2)):
    "Qanoon ke mutabiq aap ko sach bolna hoga. Ghalat bayan dena qanooni jurm hai."
@@ -83,8 +85,8 @@ Once all fields are collected, call save_witness_statement. Then read the struct
 [Read each field clearly]
 
 "Kya yeh bilkul sahi hai â haan ya nahi?"
-â If "haan": finalise.
-â If correction: update the field, re-read that field only, re-confirm.
+→ If "haan": call confirm_statement with confirmed=true (and ref_code if known), then proceed to Phase 4.
+→ If correction: update the field, re-read that field only, re-confirm.
 â Maximum 3 correction rounds.
 
 âââââââââââââââââââââââââââââââââââ
