@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from xml.sax.saxutils import escape
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -20,8 +20,14 @@ from app.services.call_tracker import (
     normalize_call_status,
     persistable_fields,
 )
+from app.services.llm_service import LLMService, get_llm_service
 from app.services.phone_utils import CALL_INSTRUCTIONS, normalize_pakistan_phone
 from app.services.uplift_service import UpliftService, get_uplift_service
+from app.services.web_call_pipeline import append_event, process_web_recording
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _sync_one_call(
@@ -34,7 +40,13 @@ async def _sync_one_call(
     fetch_detail: bool = True,
 ) -> Dict[str, Any]:
     """Merge list/detail Uplift data into a tracked call and persist artifacts."""
-    # Local-only failure stubs (dispatch errors) have no Uplift session to fetch.
+    # Local-only stubs (dispatch errors / offline web demos) have no Uplift session.
+    local_only = (
+        str(call_id).startswith("failed-")
+        or str(call_id).startswith("web-")
+        or bool(local.get("mocked"))
+        or str(local.get("channel") or "").startswith("web")
+    )
     if str(call_id).startswith("failed-"):
         status = local.get("status") or local.get("state") or "failed"
         if status in {"unknown", ""}:
@@ -52,6 +64,17 @@ async def _sync_one_call(
         }
         db.upsert_call(persistable_fields(repaired))
         return repaired
+
+    if local_only and not remote:
+        status = local.get("status") or local.get("state") or "unknown"
+        return {
+            **local,
+            "call_id": call_id,
+            "status": status,
+            "label": local.get("label")
+            or human_label(status, local.get("outcome"), channel=local.get("channel")),
+            "mocked": bool(local.get("mocked", False)),
+        }
 
     remote_payload = dict(remote or {})
     artifacts = None
@@ -115,32 +138,298 @@ async def create_session(
     uplift: UpliftService = Depends(get_uplift_service),
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
+    """
+    Start a browser / web-demo session (Uplift WebRTC when keyed).
+
+    Always tracks a call row with channel=web_browser so the Calls dashboard
+    and live activity feed can show progress — same pipeline as phone, minus PSTN.
+    """
     name = "Witness"
     if body:
         name = body.participant_name or body.participantName or "Witness"
     session = await uplift.create_session(name)
-    db.save_session(
+    if not session.get("ok", True) and not session.get("token"):
+        raise HTTPException(
+            status_code=int(session.get("status_code") or 502),
+            detail=session.get("detail") or "Failed to create web session",
+        )
+
+    room = session.get("roomName") or f"gawah-web-{name.replace(' ', '-').lower()}"
+    call_id = str(
+        session.get("sessionId")
+        or session.get("session_id")
+        or f"web-{room}-{int(datetime.now(timezone.utc).timestamp())}"
+    )
+    demo = bool(session.get("demo", False))
+    events = [
         {
-            "room_name": session.get("roomName"),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "status": "active",
-            "demo": session.get("demo", False),
-            "channel": "browser",
+            "at": _now_iso(),
+            "type": "session_created",
+            "detail": (
+                "Offline demo credentials — use web recorder to submit testimony"
+                if demo
+                else "Uplift browser session created"
+            ),
+        }
+    ]
+    tracked = db.upsert_call(
+        {
+            "call_id": call_id,
+            "status": "dispatched",
+            "state": "dispatched",
+            "channel": "web_browser",
+            "direction": "inbound",
+            "assistant_id": session.get("assistantId"),
+            "participant_name": name,
+            "room_name": room,
+            "mocked": demo,
+            "label": human_label("dispatched", channel="web_browser"),
+            "events": events,
+            "artifacts_status": "pending_or_unavailable",
+            "artifacts_available": False,
         }
     )
-    db.record_kpi_event("session_created", {"room": session.get("roomName")})
+    db.save_session(
+        {
+            "call_id": call_id,
+            "room_name": room,
+            "created_at": _now_iso(),
+            "status": "active",
+            "demo": demo,
+            "channel": "web_browser",
+        }
+    )
+    db.record_kpi_event(
+        "session_created",
+        {"room": room, "call_id": call_id, "channel": "web_browser", "demo": demo},
+    )
     return {
         "token": session.get("token"),
         "wsUrl": session.get("wsUrl"),
         "ws_url": session.get("wsUrl"),
-        "roomName": session.get("roomName"),
-        "room_name": session.get("roomName"),
+        "roomName": room,
+        "room_name": room,
         "assistantId": session.get("assistantId"),
-        "demo": session.get("demo", False),
+        "sessionId": call_id,
+        "callId": call_id,
+        "demo": demo,
         "ok": session.get("ok", True),
         "detail": session.get("detail"),
-        "channel": "browser",
+        "channel": "web_browser",
+        "status": "dispatched",
+        "label": tracked.get("label"),
+        "message": (
+            "Web session tracked. Connect mic (live agent) or record testimony in-browser. "
+            "Status appears on Dashboard → Calls."
+        ),
     }
+
+
+class WebEventBody(BaseModel):
+    type: str = Field(..., description="e.g. connecting, connected, recording, tool, error")
+    detail: Optional[str] = None
+    status: Optional[str] = Field(
+        default=None,
+        description="Optional call status override: connected|processing|completed|failed",
+    )
+
+
+@router.post("/web/{call_id}/events")
+async def post_web_event(
+    call_id: str,
+    body: WebEventBody,
+    db: Database = Depends(get_db),
+) -> Dict[str, Any]:
+    """Live activity pings from the web demo UI (logs + optional status)."""
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(status_code=404, detail="Web call not found")
+
+    events = append_event(call, body.type, body.detail or "")
+    patch: Dict[str, Any] = {
+        "call_id": call_id,
+        "events": events,
+        "channel": call.get("channel") or "web_browser",
+    }
+    status = (body.status or "").lower().strip()
+    if status:
+        patch["status"] = status
+        patch["state"] = status
+        patch["label"] = human_label(status, channel="web_browser")
+        if status in {"answered", "connected", "in_progress"}:
+            patch["connected"] = True
+            patch.setdefault("answered_at", _now_iso())
+        if status in TERMINAL_STATES:
+            patch["ended_at"] = _now_iso()
+            patch["ended_by"] = "web_client"
+
+    updated = db.upsert_call(patch)
+    db.record_kpi_event(
+        "web_event",
+        {"call_id": call_id, "type": body.type, "status": status or None},
+    )
+    return {"ok": True, "item": updated, "events": updated.get("events") or []}
+
+
+@router.post("/web/{call_id}/recording")
+async def upload_web_recording(
+    call_id: str,
+    file: UploadFile = File(...),
+    language: str = Form(default="ur"),
+    participantName: str = Form(default="Witness"),
+    db: Database = Depends(get_db),
+    uplift: UpliftService = Depends(get_uplift_service),
+    llm: LLMService = Depends(get_llm_service),
+) -> Dict[str, Any]:
+    """
+    Upload browser MediaRecorder audio → STT → structure → statement.
+
+    This is the demo path that stores transcripts/recordings without PSTN.
+    Phone outbound path remains available at POST /api/sessions/call.
+    """
+    if not db.get_call(call_id):
+        # Allow upload even if create was skipped (idempotent track)
+        db.upsert_call(
+            {
+                "call_id": call_id,
+                "status": "processing",
+                "state": "processing",
+                "channel": "web_browser",
+                "direction": "inbound",
+                "participant_name": participantName,
+                "label": human_label("processing", channel="web_browser"),
+                "mocked": False,
+                "events": [
+                    {
+                        "at": _now_iso(),
+                        "type": "recording_upload_started",
+                        "detail": "Call row created from upload",
+                    }
+                ],
+            }
+        )
+
+    raw = await file.read()
+    result = await process_web_recording(
+        call_id=call_id,
+        file_bytes=raw,
+        filename=file.filename or "recording.webm",
+        language=language,
+        db=db,
+        uplift=uplift,
+        llm=llm,
+        participant_name=participantName,
+    )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=int(result.get("status_code") or 500),
+            detail=result.get("detail") or "Web recording processing failed",
+        )
+    item = db.get_call(call_id)
+    return {**result, "item": item}
+
+
+@router.post("/web/{call_id}/complete")
+async def complete_web_session(
+    call_id: str,
+    uplift: UpliftService = Depends(get_uplift_service),
+    db: Database = Depends(get_db),
+) -> Dict[str, Any]:
+    """Mark web session ended and pull Uplift artifacts when a real session id exists."""
+    call = db.get_call(call_id)
+    if not call:
+        raise HTTPException(status_code=404, detail="Web call not found")
+
+    events = append_event(call, "session_complete", "Client ended web session")
+    status = call.get("status") or "completed"
+    if status not in TERMINAL_STATES and status != "processing":
+        status = "completed"
+
+    patch: Dict[str, Any] = {
+        "call_id": call_id,
+        "status": status,
+        "state": status,
+        "ended_at": call.get("ended_at") or _now_iso(),
+        "ended_by": call.get("ended_by") or "web_client",
+        "events": events,
+        "label": call.get("label")
+        or human_label(status, channel="web_browser"),
+        "channel": "web_browser",
+    }
+
+    # If this was a real Uplift session id, try artifact sync
+    if uplift.enabled and not str(call_id).startswith("web-") and not call.get("mocked"):
+        enriched = await uplift.enrich_call_from_uplift(
+            call_id,
+            download=not bool(call.get("local_recording_path")),
+        )
+        if enriched.get("ok"):
+            merged = merge_uplift_session(
+                {**call, **patch},
+                enriched.get("session") or {},
+                artifacts=enriched.get("artifacts"),
+            )
+            patch = persistable_fields({**merged, "call_id": call_id, "events": events})
+
+    updated = db.upsert_call(patch)
+    return {"ok": True, "item": updated}
+
+
+@router.get("/activity")
+async def live_activity(
+    limit: int = Query(40, ge=1, le=200),
+    db: Database = Depends(get_db),
+) -> Dict[str, Any]:
+    """Flattened live event feed across phone + web calls for dashboard validation."""
+    calls = db.list_calls(limit=min(limit, 50))
+    feed: List[Dict[str, Any]] = []
+    for call in calls:
+        cid = call.get("call_id")
+        channel = call.get("channel") or "unknown"
+        for ev in call.get("events") or []:
+            feed.append(
+                {
+                    "call_id": cid,
+                    "channel": channel,
+                    "status": call.get("status"),
+                    "at": ev.get("at"),
+                    "type": ev.get("type"),
+                    "detail": ev.get("detail"),
+                    "ref_code": call.get("ref_code") or ev.get("ref_code"),
+                }
+            )
+        # Always include a synthetic status row so empty-event calls still appear
+        feed.append(
+            {
+                "call_id": cid,
+                "channel": channel,
+                "status": call.get("status"),
+                "at": call.get("updated_at") or call.get("created_at"),
+                "type": "status",
+                "detail": call.get("label") or call.get("status"),
+                "ref_code": call.get("ref_code"),
+            }
+        )
+
+    feed.sort(key=lambda e: e.get("at") or "", reverse=True)
+    feed = feed[:limit]
+
+    counts = {
+        "total_calls": len(calls),
+        "web": sum(1 for c in calls if "web" in str(c.get("channel") or "")),
+        "phone": sum(
+            1
+            for c in calls
+            if "phone" in str(c.get("channel") or "") or c.get("to")
+        ),
+        "active": sum(
+            1 for c in calls if (c.get("status") or "").lower() in ACTIVE_STATES
+        ),
+        "completed": sum(
+            1 for c in calls if (c.get("status") or "").lower() == "completed"
+        ),
+    }
+    return {"ok": True, "counts": counts, "items": feed}
 
 
 @router.post("/call")

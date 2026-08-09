@@ -182,3 +182,15 @@ class SaveStatementArgs(BaseModel):
     statement_delay_days: Optional[int] = None
     statement_delay_explanation: Optional[str] = None
     session_id: Optional[str] = None
+
+
+class StructuredStatement(BaseModel):
+    """LLM / heuristic extraction shape used by STT → structure pipelines."""
+
+    incident_date: Optional[str] = None
+    incident_time: Optional[str] = None
+    incident_location: Optional[str] = None
+    persons_involved: List[str] = Field(default_factory=list)
+    sequence_of_events: Any = None
+    witness_name: Optional[str] = None
+    inconsistencies: List[str] = Field(default_factory=list)

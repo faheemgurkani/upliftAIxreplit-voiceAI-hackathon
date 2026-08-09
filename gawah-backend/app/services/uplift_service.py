@@ -93,13 +93,15 @@ class UpliftService:
         assistant_id = assistant.get("assistantId") or self.settings.uplift_assistant_id
 
         if not self.enabled or not assistant_id or str(assistant_id).startswith("demo"):
-            # Offline demo session so frontend can proceed
+            # Offline demo session so frontend can proceed (web recorder still works)
+            room = f"gawah-demo-{participant_name.replace(' ', '-').lower()}"
             return {
                 "ok": True,
                 "demo": True,
                 "token": "demo-session-token",
                 "wsUrl": "wss://demo.local/gawah",
-                "roomName": f"gawah-demo-{participant_name.replace(' ', '-').lower()}",
+                "roomName": room,
+                "sessionId": f"web-{room}",
                 "assistantId": assistant_id or "demo-assistant",
             }
 
@@ -107,27 +109,56 @@ class UpliftService:
             f"{self.settings.uplift_base_url.rstrip('/')}"
             f"/realtime-assistants/{assistant_id}/createSession"
         )
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                url,
-                headers=self._headers(),
-                json={"participantName": participant_name},
-            )
-            if response.status_code >= 400:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    headers=self._headers(),
+                    json={"participantName": participant_name},
+                )
+                if response.status_code >= 400:
+                    # Fall back to tracked web-recorder session for demos
+                    room = f"gawah-demo-{participant_name.replace(' ', '-').lower()}"
+                    return {
+                        "ok": True,
+                        "demo": True,
+                        "token": "demo-session-token",
+                        "wsUrl": "wss://demo.local/gawah",
+                        "roomName": room,
+                        "sessionId": f"web-{room}",
+                        "assistantId": assistant_id,
+                        "detail": response.text[:300],
+                        "status_code": response.status_code,
+                    }
+                data = response.json()
+                session_id = (
+                    data.get("sessionId")
+                    or data.get("session_id")
+                    or data.get("id")
+                    or data.get("roomName")
+                    or data.get("room")
+                )
                 return {
-                    "ok": False,
-                    "detail": response.text,
-                    "status_code": response.status_code,
+                    "ok": True,
+                    "demo": False,
+                    "token": data.get("token") or data.get("accessToken"),
+                    "wsUrl": data.get("wsUrl") or data.get("serverUrl") or data.get("url"),
+                    "roomName": data.get("roomName") or data.get("room"),
+                    "sessionId": session_id,
+                    "assistantId": assistant_id,
+                    "raw": data,
                 }
-            data = response.json()
+        except httpx.HTTPError as exc:
+            room = f"gawah-demo-{participant_name.replace(' ', '-').lower()}"
             return {
                 "ok": True,
-                "demo": False,
-                "token": data.get("token") or data.get("accessToken"),
-                "wsUrl": data.get("wsUrl") or data.get("serverUrl") or data.get("url"),
-                "roomName": data.get("roomName") or data.get("room"),
+                "demo": True,
+                "token": "demo-session-token",
+                "wsUrl": "wss://demo.local/gawah",
+                "roomName": room,
+                "sessionId": f"web-{room}",
                 "assistantId": assistant_id,
-                "raw": data,
+                "detail": f"Uplift unreachable — web recorder available: {exc}",
             }
 
     async def synthesize_speech(self, text: str) -> bytes:

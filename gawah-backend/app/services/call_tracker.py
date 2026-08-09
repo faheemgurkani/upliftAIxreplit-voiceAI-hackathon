@@ -57,10 +57,22 @@ def normalize_call_status(
     return s or "unknown"
 
 
-def human_label(status: str, outcome: Optional[str] = None) -> str:
+def human_label(status: str, outcome: Optional[str] = None, *, channel: Optional[str] = None) -> str:
     status = (status or "unknown").lower()
     outcome = (outcome or "").lower()
+    ch = (channel or "").lower()
+    web = ch in {"web_browser", "browser", "web"}
     if status in ACTIVE_STATES:
+        if web:
+            return {
+                "dispatched": "Web session created — start mic / recorder",
+                "dialing": "Connecting browser voice…",
+                "ringing": "Waiting for browser connect…",
+                "answered": "Live — web interview in progress",
+                "in_progress": "Live — web interview in progress",
+                "connected": "Live — web interview in progress",
+                "processing": "Processing web recording / transcript",
+            }.get(status, status)
         return {
             "dispatched": "Queued / dialing started",
             "dialing": "Dialing",
@@ -182,8 +194,16 @@ def persistable_fields(merged: Dict[str, Any]) -> Dict[str, Any]:
         "artifacts_available",
         "mocked",
         "created_at",
+        "events",
+        "ref_code",
+        "participant_name",
+        "assistant_id",
+        "room_name",
     )
     out = {k: merged[k] for k in keys if k in merged and merged[k] is not None}
+    # Keep empty event lists / false flags
+    if "events" in merged and merged["events"] is not None:
+        out["events"] = merged["events"]
     out.setdefault("mocked", False)
     return out
 

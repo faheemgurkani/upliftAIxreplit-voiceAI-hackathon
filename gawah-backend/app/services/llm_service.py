@@ -37,7 +37,7 @@ class LLMService:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self._client = None
-        if self.settings.llm_enabled:
+        if self.settings.llm_enabled and self.settings.openai_api_key:
             from openai import AsyncOpenAI
 
             self._client = AsyncOpenAI(api_key=self.settings.openai_api_key)
