@@ -1,10 +1,8 @@
 # Voice AI Enabled Orchestration Engine (Gawah)
 
-**Gawah (گواہ)** — voice-first witness statements for Pakistan: a neighbour speaks on a **browser WebRTC** or **PSTN** call; counsel gets a structured CrPC **§161** record, consistency flags, and multi-witness clusters — without putting the caller’s identity on the dashboard.
+**Gawah (گواہ)** — voice-first CrPC **§161** witness statements for Pakistan. Witnesses speak via **WebRTC** or **PSTN**; counsel gets structured records, consistency flags, and multi-witness clusters — without caller identity on the dashboard.
 
-> Originated at the **[Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org)**. Voice realtime, STT, and TTS powered by **[Uplift AI](https://upliftai.org)** (Singapore region).
-
-> **Spine:** A witness can go on record without going on record — and counsel can act on that record before the case collapses.
+> **[Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org)** · Voice realtime, STT, and TTS by **[Uplift AI](https://upliftai.org)** (Singapore)
 
 [![Live on Vercel](https://img.shields.io/badge/Live%20demo-upliftaixreplit--gawah.vercel.app-000?style=for-the-badge&logo=vercel&logoColor=white)](https://upliftaixreplit-gawah.vercel.app)
 
@@ -13,232 +11,86 @@
 | **App** | https://upliftaixreplit-gawah.vercel.app |
 | **API** | https://gawah-backend.vercel.app · [docs](https://gawah-backend.vercel.app/docs) · [health](https://gawah-backend.vercel.app/health) |
 
-Full deploy guide: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) (Vercel projects, env vars, CORS, redeploy, troubleshooting).
+Production deploy: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
 
 ---
 
-## Quick start (teammates)
+## Quick start
 
-**Prerequisites:** Python 3.10+, Node.js 18+, Git.  
-**Full guide:** [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md)
-
-### macOS / Linux
+**Prerequisites:** Python 3.10+, Node.js 18+, Git · Full guide: [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md)
 
 ```bash
-chmod +x scripts/setup.sh
-./scripts/setup.sh install   # venv, deps, env files, pnpm, demo seed
-./scripts/setup.sh dev       # API :8000 + UI :5173
-```
-
-### Windows (PowerShell)
-
-```powershell
-.\scripts\setup.ps1 install
-.\scripts\setup.ps1 dev
-```
-
-### Any OS
-
-```bash
-python scripts/setup.py install   # Windows: py -3 scripts\setup.py install
+python scripts/setup.py install
 python scripts/setup.py dev
 ```
 
-| Open | URL |
-|------|-----|
+| Local | URL |
+|-------|-----|
 | App | http://127.0.0.1:5173 |
-| API docs | http://127.0.0.1:8000/docs |
+| API | http://127.0.0.1:8000/docs |
 
-Put live keys in **`gawah-backend/.env`** (see [Environment](#environment-variables)). Then tour: **Dashboard → NBRA7K → Clusters → Calls → Demo (live call)**.
-
-```bash
-python scripts/setup.py check   # verify tools / env
-python scripts/setup.py seed    # reload demo statements
-```
+Copy [`gawah-backend/.env.example`](./gawah-backend/.env.example), add keys (below), then tour **Dashboard → NBRA7K → Clusters → Calls → Demo**.
 
 ---
-
-## Overview
-
-**Voice AI Enabled Orchestration Engine (Gawah)** orchestrates voice intake, structuring, and counsel review for Pakistan witness statements. The witness-facing product is **Gawah** — it captures accounts over **web WebRTC** or **PSTN** (Uplift AI, Singapore region), structures CrPC §161 fields, flags inconsistencies, clusters overlapping incidents, and surfaces a lawyer / NGO review queue. Witnesses stay free; institutions buy seats.
-
-The agent speaks **male Standard Urdu** (Uplift voice `defense-advocate`) and is instructed to output **Nastaliq Urdu** so live captions match what the witness hears.
 
 ## Features
 
-- Live **web** and **phone** voice intake (Urdu / Punjabi, Shahmukhi/Nastaliq)
-- **Live Agent ↔ Witness dialogue** on `/demo` (scrollable chat beside the call panel)
-- End-of-call **mic upload → STT → §161 structuring** for web sessions (dashboard statement + ref code)
-- Privacy mode + 6-character reference code (no phone on the dashboard)
-- Consistency flags (A/B segments) for counsel prep — not lie detection
-- Multi-witness **clusters** with agreement / conflict / collusion caution (§162 honesty)
-- Protection referral when intimidation is indicated
-- Seeded demo data for offline tour of Dashboard / Clusters / Calls
+- Web + phone voice intake (Urdu / Punjabi) through Uplift AI
+- End-of-call STT → §161 structure → 6-character ref code + privacy mode
+- Consistency flags, multi-witness clusters, protection referrals
+- Seeded demo data (`NBRA7K`, `SHPK2M`, `NBRC9Q`) for offline UI tour
 
-## How a live web call works
+## Stack
 
-```text
-Browser (/demo)
-  → POST /api/sessions/create  (adhoc Uplift session: full Gawah prompt + tools + Urdu STT/TTS)
-  → @upliftai/assistants-react  (WebRTC room)
-  → LiveKit transcriptions → Agent / گواہ chat (right panel, fixed height, scrolls)
-  → Continuous witness MediaRecorder
-  → End call → POST /api/sessions/web/{callId}/recording
-       (+ optional dialogue JSON)
-       → STT → structure fields → statement + ref code
-  → POST /api/sessions/web/{callId}/complete
-  → Ended UI: CTAs + full dialogue chat
-```
-
-Phone path uses the same agent config (synced to `UPLIFT_ASSISTANT_ID`) via `POST /api/sessions/call` on the Singapore base URL.
-
-## Tech stack
-
-| Layer | Stack |
-|-------|--------|
-| API | FastAPI · Uplift AI (Realtime Assistants, TTS, STT) · OpenRouter · local JSON store |
-| UI | Vite · React · Tailwind · `@upliftai/assistants-react` · LiveKit components |
-| Package manager (UI) | **pnpm** workspace under `frontend/` |
-
-## Project structure
+| Layer | Tech |
+|-------|------|
+| API | FastAPI · Uplift AI · OpenRouter · local JSON |
+| UI | Vite · React · `@upliftai/assistants-react` |
 
 ```text
-.
-├── gawah-backend/                      # FastAPI — run this API
-│   ├── app/prompts/                    # Agent instructions + tool schemas
-│   ├── app/services/                   # Uplift, web pipeline, consistency, clusters
-│   └── scripts/seed_demo.py            # Demo statements / cluster / calls
-├── frontend/artifacts/gawah-frontend/  # Vite UI — run this frontend
-│   └── src/components/
-│       ├── live-web-call.tsx           # WebRTC + dialogue + recording
-│       └── transcript-chat.tsx         # Agent / گواہ chat UI
-├── frontend/                           # pnpm workspace root
-├── client/                             # older Next.js prototype (optional)
-├── docs/                               # Specs, setup, compliance
-├── scripts/                            # setup.py / setup.sh / setup.ps1
-└── tests/                              # Test notes
+gawah-backend/                       # FastAPI orchestration
+frontend/artifacts/gawah-frontend/   # production UI
+docs/                                # specs, deploy, API contract
 ```
-
-`frontend/` is a normal folder in this repo (not a git submodule).
 
 ---
 
-## Environment variables
+## Environment
 
-Templates:
-
-- [`.env.example`](./.env.example) — root convenience copy  
-- [`gawah-backend/.env.example`](./gawah-backend/.env.example) — **used by the API**  
-- [`frontend/artifacts/gawah-frontend/.env.example`](./frontend/artifacts/gawah-frontend/.env.example)
-
-**Required for live voice / phone:**
+Minimum for live voice (see [`gawah-backend/.env.example`](./gawah-backend/.env.example)):
 
 ```env
 UPLIFTAI_API_KEY=
 UPLIFT_BASE_URL=https://ap-southeast-1.api.upliftai.org/v1
+OPENROUTER_API_KEY=   # recommended — structuring
 ```
 
-**Recommended:**
-
-```env
-OPENROUTER_API_KEY=
-UPLIFT_ASSISTANT_ID=              # optional; backend creates/syncs
-UPLIFT_TTS_VOICE_ID=defense-advocate   # male Standard Urdu (see Uplift voice library)
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-```
-
-Never commit real secrets. Ask the team for keys privately.
-
-Voice catalog: [docs.upliftai.org/orator_voices](https://docs.upliftai.org/orator_voices).
+Do not commit secrets.
 
 ---
 
-## Manual run (without the script)
+## Documentation
 
-```bash
-# API
-python3 -m venv .venv
-source .venv/bin/activate                 # Windows: .venv\Scripts\activate
-pip install -r gawah-backend/requirements.txt
-cp gawah-backend/.env.example gawah-backend/.env
-uvicorn app.main:app --app-dir gawah-backend --reload --host 0.0.0.0 --port 8000
-
-# UI (second terminal)
-cd frontend && pnpm install
-cd artifacts/gawah-frontend
-cp .env.example .env
-PORT=5173 BASE_PATH=/ pnpm dev --host 127.0.0.1
-```
-
-More detail: [`gawah-backend/README.md`](./gawah-backend/README.md) · [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md)
-
----
-
-## Demo routes
-
-| Path | Purpose |
-|------|---------|
-| `/` | Landing |
-| `/demo` | Live web / phone call + dialogue + activity log |
-| `/dashboard` | Statement queue |
-| `/dashboard/:ref` | Statement detail |
-| `/clusters` | Incident clusters |
-| `/calls` | Live call pipeline |
-
-### Seeded refs (after `seed`)
-
-| Ref | Notes |
-|-----|--------|
-| **NBRA7K** | Urgent, privacy, intimidation, A/B flags, protection |
-| **SHPK2M** | Phone / shopkeeper, sequence flag |
-| **NBRC9Q** | Punjabi, privacy, collusion caution vs shopkeeper |
-
-Cluster: Hussain Abad (`26980a20-demo-hussain-abad-0001`) + linked calls.
-
----
-
-## Key API surfaces
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/sessions/create` | Adhoc WebRTC session (`token` + `wsUrl`) |
-| POST | `/api/sessions/call` | Outbound PSTN (Pakistan mobiles) |
-| POST | `/api/sessions/web/{id}/recording` | Mic upload + optional `dialogue` JSON → STT → statement |
-| POST | `/api/sessions/web/{id}/complete` | Mark web session ended + ensure dashboard row |
-| POST | `/api/sessions/web/{id}/events` | Activity / pipeline events |
-| GET | `/api/dashboard/statements` | Review queue |
-| GET | `/api/dashboard/clusters` | Multi-witness clusters |
-| GET | `/api/kpis` | Ops + ROI proxies |
-
-Full contract: [`docs/BACKEND_PRD_FOR_FRONTEND.md`](./docs/BACKEND_PRD_FOR_FRONTEND.md).
-
----
-
-## Docs
-
-| Doc | What |
-|-----|------|
-| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | **Vercel production** — URLs, env, CLI, CORS, demo seed |
-| [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md) | Teammate install / troubleshooting |
-| [`docs/WEB_CALL_AND_DIALOGUE.md`](./docs/WEB_CALL_AND_DIALOGUE.md) | Live web call + dialogue + upload pipeline |
-| [`docs/BACKEND_PRD_FOR_FRONTEND.md`](./docs/BACKEND_PRD_FOR_FRONTEND.md) | API contract for the UI |
-| [`docs/UPLIFTAI_DOCUMENTATION.md`](./docs/UPLIFTAI_DOCUMENTATION.md) | Uplift hackathon guide (TTS / calls) |
+| Doc | |
+|-----|---|
+| [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md) | Install & troubleshooting |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Vercel production |
+| [`docs/BACKEND_PRD_FOR_FRONTEND.md`](./docs/BACKEND_PRD_FOR_FRONTEND.md) | API contract |
+| [`docs/WEB_CALL_AND_DIALOGUE.md`](./docs/WEB_CALL_AND_DIALOGUE.md) | Live call pipeline |
 | [`docs/FULL_SPEC_AND_IMPLEMENTATION_PLAN.md`](./docs/FULL_SPEC_AND_IMPLEMENTATION_PLAN.md) | Full product spec |
-| [`docs/COMPLIANCE_FUTURE_WORK.md`](./docs/COMPLIANCE_FUTURE_WORK.md) | CrPC / PDPA track |
-| [`docs/PAKISTAN_LIVE_VERIFICATION_REPORT.md`](./docs/PAKISTAN_LIVE_VERIFICATION_REPORT.md) | Live stack probe notes |
-| [`gawah-backend/README.md`](./gawah-backend/README.md) | API runbook + routes |
-| [`scripts/README.md`](./scripts/README.md) | Setup script commands |
+| [`docs/UPLIFTAI_DOCUMENTATION.md`](./docs/UPLIFTAI_DOCUMENTATION.md) | Uplift AI integration guide |
+| [`gawah-backend/README.md`](./gawah-backend/README.md) | API runbook |
 
-## Compliance (future work)
+---
 
-Hackathon MVP is **not** claiming full statutory privacy certification. Post-demo targets: CrPC §§161–162, PDPB/PDPA draft readiness, PTA/PECA consent, National AI Policy 2025 — see compliance doc above.
+## Team
+
+| Contributor | GitHub |
+|-------------|--------|
+| Zeeshan | [@Xeeshan85](https://github.com/Xeeshan85) |
+
+---
 
 ## License
 
 See [LICENSE](./LICENSE).
-
-## Origin
-
-**Voice AI Enabled Orchestration Engine (Gawah)** is the project name for this repository. The witness-facing product is **Gawah (گواہ)**.
-
-Built for the **[Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org)**. Core voice infrastructure — Realtime Assistants, STT, TTS, and PSTN — runs on **[Uplift AI](https://upliftai.org)** (Singapore region for Pakistan latency).
