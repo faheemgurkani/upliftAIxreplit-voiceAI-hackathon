@@ -4,6 +4,15 @@ Voice-first witness statements for Pakistan: a neighbour speaks on a **browser W
 
 > **Spine:** A witness can go on record without going on record — and counsel can act on that record before the case collapses.
 
+[![Live on Vercel](https://img.shields.io/badge/Live%20demo-upliftaixreplit--gawah.vercel.app-000?style=for-the-badge&logo=vercel&logoColor=white)](https://upliftaixreplit-gawah.vercel.app)
+
+| | URL |
+|---|-----|
+| **App** | https://upliftaixreplit-gawah.vercel.app |
+| **API** | https://gawah-backend.vercel.app · [docs](https://gawah-backend.vercel.app/docs) · [health](https://gawah-backend.vercel.app/health) |
+
+Full deploy guide: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) (Vercel projects, env vars, CORS, redeploy, troubleshooting).
+
 ---
 
 ## Quick start (teammates)
@@ -207,6 +216,7 @@ Full contract: [`docs/BACKEND_PRD_FOR_FRONTEND.md`](./docs/BACKEND_PRD_FOR_FRONT
 
 | Doc | What |
 |-----|------|
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | **Vercel production** — URLs, env, CLI, CORS, demo seed |
 | [`docs/LOCAL_SETUP.md`](./docs/LOCAL_SETUP.md) | Teammate install / troubleshooting |
 | [`docs/WEB_CALL_AND_DIALOGUE.md`](./docs/WEB_CALL_AND_DIALOGUE.md) | Live web call + dialogue + upload pipeline |
 | [`docs/BACKEND_PRD_FOR_FRONTEND.md`](./docs/BACKEND_PRD_FOR_FRONTEND.md) | API contract for the UI |

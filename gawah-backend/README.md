@@ -39,6 +39,16 @@ cp gawah-backend/.env.example gawah-backend/.env
 
 Docs: http://localhost:8000/docs
 
+## Production (Vercel)
+
+| | URL |
+|---|-----|
+| API | https://gawah-backend.vercel.app |
+| Health | https://gawah-backend.vercel.app/health |
+| Swagger | https://gawah-backend.vercel.app/docs |
+
+Deploy from `gawah-backend/` with framework **FastAPI**. See [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md) for env vars, CORS, and CLI steps. Demo seed runs automatically on startup when using local JSON (including Vercel `/tmp`).
+
 ## Environment (important)
 
 Authoritative file: **`gawah-backend/.env`** (template: `.env.example`).

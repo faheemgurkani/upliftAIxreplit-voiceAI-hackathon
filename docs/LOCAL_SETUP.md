@@ -4,6 +4,8 @@ Run Gawah on your laptop: **FastAPI** backend + **Vite** dashboard.
 
 Supported: **macOS · Windows · Linux**.
 
+**Production (no local install):** https://upliftaixreplit-gawah.vercel.app — see [`DEPLOYMENT.md`](./DEPLOYMENT.md) for Vercel setup and redeploy.
+
 ---
 
 ## Prerequisites
