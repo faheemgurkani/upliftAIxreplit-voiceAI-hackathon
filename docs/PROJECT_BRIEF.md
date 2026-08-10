@@ -1,4 +1,6 @@
-# Project Brief
+# Project Brief — Voice AI Enabled Orchestration Engine (Gawah)
+
+**Product:** Gawah (گواہ) · **Origin:** Uplift AI × Replit Voice AI Hackathon (2026) · **Voice:** Uplift AI
 
 > Fill this in once the idea is finalized.
 

@@ -1,6 +1,6 @@
-# Uplift AI — Voice AI Hackathon Guide
+# Uplift AI — Voice AI Hackathon Guide (Gawah project)
 
-Welcome to the **Uplift AI × Replit Voice AI Hackathon**! This guide has everything you need to build with Uplift AI: lifelike Urdu text-to-speech, and AI voice agents that make real phone calls.
+Welcome to the **Uplift AI × Replit Voice AI Hackathon**! This guide supports **Voice AI Enabled Orchestration Engine (Gawah)** — the voice-AI orchestration stack behind the **Gawah (گواہ)** witness product.
 
 Whatever your track — AI voice apps, AI media, creative AI etc — the two building blocks below (TTS and phone calls) are your starting point.
 

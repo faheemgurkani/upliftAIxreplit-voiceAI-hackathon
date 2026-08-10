@@ -1,4 +1,6 @@
-# Web call, live dialogue, and statement pipeline
+# Web call, live dialogue, and statement pipeline — Gawah
+
+**Project:** Voice AI Enabled Orchestration Engine (Gawah) · **Voice:** Uplift AI
 
 Current behaviour of the **Demo → Browser** path in `frontend/artifacts/gawah-frontend` and `gawah-backend`.
 

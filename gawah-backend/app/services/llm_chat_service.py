@@ -24,7 +24,7 @@ class LLMChatService:
                 api_key=self.settings.openrouter_api_key,
                 default_headers={
                     "HTTP-Referer": "https://gawah.local",
-                    "X-OpenRouter-Title": "Gawah Hackathon",
+                    "X-OpenRouter-Title": "Voice AI Enabled Orchestration Engine (Gawah)",
                 },
             )
             self.provider = "openrouter"

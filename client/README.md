@@ -1,5 +1,7 @@
 # Gawah Client (legacy Next.js)
 
+Part of **Voice AI Enabled Orchestration Engine (Gawah)**. The production UI is the Vite app at `frontend/artifacts/gawah-frontend`.
+
 > **Hackathon demos use the Vite app**, not this folder:  
 > `frontend/artifacts/gawah-frontend` via `python scripts/setup.py dev`  
 > See [`../README.md`](../README.md) and [`../docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md).  

@@ -1,10 +1,12 @@
-# Submission Checklist
+# Submission Checklist — Voice AI Enabled Orchestration Engine (Gawah)
+
+**Product:** Gawah (گواہ) · **Hackathon:** Uplift AI × Replit Voice AI Hackathon (2026) · **Voice stack:** Uplift AI
 
 Use this before final hackathon submission.
 
 ## Required
 
-- [ ] Project name and one-line pitch
+- [ ] Project name: **Voice AI Enabled Orchestration Engine (Gawah)** and one-line pitch
 - [ ] Working demo (local and/or deployed)
 - [ ] README with setup + demo instructions
 - [ ] Team member names and roles

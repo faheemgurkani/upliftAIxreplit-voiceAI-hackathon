@@ -60,7 +60,7 @@ python scripts/setup.py seed    # reload demo statements
 
 ## Overview
 
-**Gawah** captures a witness account over **web WebRTC** or **PSTN** (Uplift AI, Singapore region), structures CrPC §161 fields, flags inconsistencies, clusters overlapping incidents, and surfaces a lawyer / NGO review queue. Witnesses stay free; institutions buy seats.
+**Voice AI Enabled Orchestration Engine (Gawah)** orchestrates voice intake, structuring, and counsel review for Pakistan witness statements. The witness-facing product is **Gawah** — it captures accounts over **web WebRTC** or **PSTN** (Uplift AI, Singapore region), structures CrPC §161 fields, flags inconsistencies, clusters overlapping incidents, and surfaces a lawyer / NGO review queue. Witnesses stay free; institutions buy seats.
 
 The agent speaks **male Standard Urdu** (Uplift voice `defense-advocate`) and is instructed to output **Nastaliq Urdu** so live captions match what the witness hears.
 

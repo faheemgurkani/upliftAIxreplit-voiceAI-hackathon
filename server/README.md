@@ -1,6 +1,6 @@
-# Server
+# Server — Voice AI Enabled Orchestration Engine (Gawah)
 
-The Gawah FastAPI backend lives in [`../gawah-backend`](../gawah-backend).
+The Gawah FastAPI orchestration backend lives in [`../gawah-backend`](../gawah-backend).
 
 ```bash
 # from repo root

@@ -1,6 +1,6 @@
-# Scripts
+# Scripts — Voice AI Enabled Orchestration Engine (Gawah)
 
-Cross-platform helpers for setup and local demo.
+Cross-platform helpers for setup and local demo of **Gawah** (Uplift AI × Replit Voice AI Hackathon 2026).
 
 ## Setup & run (preferred)
 

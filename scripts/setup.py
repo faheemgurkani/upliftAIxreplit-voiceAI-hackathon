@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Gawah cross-platform setup & run helper (macOS · Windows · Linux).
+Voice AI Enabled Orchestration Engine (Gawah) — cross-platform setup & run helper (macOS · Windows · Linux).
+
+Originated at Uplift AI × Replit Voice AI Hackathon (2026). Product: Gawah (گواہ).
 
 Usage (from repo root):
   python scripts/setup.py              # install everything
@@ -309,7 +311,8 @@ def ensure_env_files() -> None:
 
 def cmd_install(args: argparse.Namespace) -> None:
     _c("\n╔══════════════════════════════════════╗")
-    _c("║     Gawah — local setup (install)    ║")
+    _c("║  Voice AI Orchestration Engine (Gawah)  ║")
+    _c("║         local setup (install)           ║")
     _c("╚══════════════════════════════════════╝")
     _c(f"OS: {sys.platform}  |  repo: {ROOT}\n")
 
@@ -443,7 +446,8 @@ def cmd_dev(_: argparse.Namespace) -> None:
     }
 
     _c("\n╔══════════════════════════════════════╗")
-    _c("║     Gawah — dev (API + frontend)     ║")
+    _c("║  Voice AI Orchestration Engine (Gawah)  ║")
+    _c("║       dev (API + frontend)              ║")
     _c("╚══════════════════════════════════════╝")
     _c("  API  → http://127.0.0.1:8000/docs")
     _c("  UI   → http://127.0.0.1:5173")
@@ -482,7 +486,7 @@ def cmd_dev(_: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Gawah local setup (macOS / Windows / Linux)",
+        description="Voice AI Enabled Orchestration Engine (Gawah) — local setup (macOS / Windows / Linux)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

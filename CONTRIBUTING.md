@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping with this hackathon project. Keep changes small, focused, and easy to review.
+Thanks for helping with **Voice AI Enabled Orchestration Engine (Gawah)**. This project originated at the Uplift AI × Replit Voice AI Hackathon (2026). Keep changes small, focused, and easy to review.
 
 ## Workflow
 
