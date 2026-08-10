@@ -13,7 +13,14 @@ from app.routers import dashboard, internal, kpis, sessions, statements, tools
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_db()
+    db = get_db()
+    # Vercel /tmp (and empty local stores) need the 3-statement demo tour for UX.
+    try:
+        from app.services.demo_seed import ensure_demo_seed
+
+        ensure_demo_seed(db)
+    except Exception:  # noqa: BLE001 — never block API boot on seed failures
+        pass
     yield
 
 
