@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> List[str]:
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # Always allow known Vercel UI hosts so frontend rebrands don't break CORS.
+        for host in (
+            "https://upliftaixreplit-gawah.vercel.app",
+            "https://gawah-app.vercel.app",
+            "https://gawah-frontend.vercel.app",
+        ):
+            if host not in origins:
+                origins.append(host)
         return origins or ["*"]
 
     @property
