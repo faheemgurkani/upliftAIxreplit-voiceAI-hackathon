@@ -19,9 +19,11 @@ function getBaseUrl(): string {
   //
   // Default: empty string → relative URLs.
   //   • Dev: Vite proxy (vite.config.ts) forwards /api/* and /health to FastAPI :8000.
-  //   • Production: Replit path router sends /api/* to the API Server artifact.
+  //   • Production static host has no proxy — fall back to the deployed FastAPI.
   const v = import.meta.env.VITE_API_URL;
-  return typeof v === 'string' && v.length > 0 ? v : '';
+  if (typeof v === 'string' && v.length > 0) return v.replace(/\/$/, '');
+  if (import.meta.env.PROD) return 'https://gawah-backend.vercel.app';
+  return '';
 }
 
 class ApiError extends Error {

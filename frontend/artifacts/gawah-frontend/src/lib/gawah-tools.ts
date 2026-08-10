@@ -9,7 +9,9 @@
 
 function apiBase(): string {
   const v = import.meta.env.VITE_API_URL;
-  return typeof v === 'string' && v.length > 0 ? v : '';
+  if (typeof v === 'string' && v.length > 0) return v.replace(/\/$/, '');
+  if (import.meta.env.PROD) return 'https://gawah-backend.vercel.app';
+  return '';
 }
 
 /** Extract tool args from Uplift RPC payload shapes. */

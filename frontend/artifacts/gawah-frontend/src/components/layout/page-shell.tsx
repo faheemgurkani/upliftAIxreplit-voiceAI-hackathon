@@ -27,7 +27,7 @@ export function PageShell({ children }: { children: ReactNode }) {
         if (!alive) return;
         setOnline(false);
         setHealthError(
-          `Backend offline — connect FastAPI at ${import.meta.env.VITE_API_URL || 'http://localhost:8000'} to use live data`,
+          `Backend offline — connect FastAPI at ${import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://gawah-backend.vercel.app' : 'http://localhost:8000')} to use live data`,
         );
       });
     return () => {
