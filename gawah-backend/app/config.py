@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Gawah API"
+    app_name: str = "Voice AI Enabled Orchestration Engine (Gawah)"
     app_env: str = "development"
     debug: bool = True
     cors_origins: str = "http://localhost:3000,http://localhost:5173"

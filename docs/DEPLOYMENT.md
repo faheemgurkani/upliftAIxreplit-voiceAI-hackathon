@@ -1,4 +1,6 @@
-# Gawah — Vercel deployment
+# Voice AI Enabled Orchestration Engine (Gawah) — Vercel deployment
+
+Production deployment for **Gawah**, the witness product built on this voice-AI orchestration stack. Originated at the **Uplift AI × Replit Voice AI Hackathon (2026)**; voice infrastructure by **Uplift AI**.
 
 Production runs as **two Vercel projects**: a Vite/React UI and a FastAPI API. They are linked at runtime via `VITE_API_URL` (frontend) and `CORS_ORIGINS` (backend).
 

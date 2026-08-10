@@ -30,8 +30,9 @@ app = FastAPI(
     title=settings.app_name,
     version=__version__,
     description=(
-        "Gawah — CrPC §161 voice witness statements for Pakistan. "
-        "Uplift AI realtime + Groq structuring + consistency/corroboration engines."
+        "Voice AI Enabled Orchestration Engine (Gawah) — CrPC §161 voice witness "
+        "statements for Pakistan. Uplift AI realtime + OpenRouter structuring + "
+        "consistency/corroboration engines."
     ),
     lifespan=lifespan,
 )

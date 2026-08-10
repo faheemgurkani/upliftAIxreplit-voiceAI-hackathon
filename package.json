@@ -1,8 +1,8 @@
 {
-  "name": "uplift-ai-replit-voiceai-hackathon",
+  "name": "voice-ai-enabled-orchestration-engine-gawah",
   "version": "0.1.0",
   "private": true,
-  "description": "Uplift AI × Replit Voice AI Hackathon project",
+  "description": "Voice AI Enabled Orchestration Engine (Gawah) — Uplift AI × Replit Voice AI Hackathon 2026",
   "scripts": {
     "setup": "python scripts/setup.py install",
     "dev": "python scripts/setup.py dev",

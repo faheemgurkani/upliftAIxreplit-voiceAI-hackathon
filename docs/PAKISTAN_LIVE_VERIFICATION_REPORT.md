@@ -1,4 +1,7 @@
-# Gawah — Pakistan Live Verification Report
+# Pakistan Live Verification — Gawah (Voice AI Enabled Orchestration Engine)
+
+**Project:** Voice AI Enabled Orchestration Engine (Gawah) · **Product:** Gawah  
+**Origin:** Uplift AI × Replit Voice AI Hackathon (2026)
 
 **Probe:** `gawah-backend/scripts/live_integration_test.py`  
 **Result artifact:** `gawah-backend/data/live_probe_results.json`  

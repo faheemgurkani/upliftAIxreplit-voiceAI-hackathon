@@ -1,6 +1,6 @@
-# Gawah — Application Specification (Consolidated)
-**Voice-first witness statement system for Pakistan's criminal justice pipeline**
-*Built for Uplift AI Hackathon | Code generation reference document*
+# Voice AI Enabled Orchestration Engine (Gawah) — Application Specification
+**Product: Gawah (گواہ)** — voice-first witness statement system for Pakistan's criminal justice pipeline  
+*Originated at Uplift AI × Replit Voice AI Hackathon (2026) · Voice infrastructure: Uplift AI · Code generation reference document*
 
 > **Document note:** This is the single merged and authoritative specification, incorporating the base spec, all addendum patches, and two new validated features: Section 16 (Intra-Statement Inconsistency Detection Engine) and Section 17 (Multi-Witness Consensus & Corroboration Layer).
 

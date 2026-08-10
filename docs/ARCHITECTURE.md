@@ -1,6 +1,6 @@
-# Architecture
+# Architecture — Voice AI Enabled Orchestration Engine (Gawah)
 
-> High-level system design — update as the stack and idea firm up.
+**Gawah (گواہ)** is the witness product; this repo is the voice-AI orchestration stack that powers it. Originated at the **Uplift AI × Replit Voice AI Hackathon (2026)** with **Uplift AI** for realtime voice, STT, and TTS.
 
 ## Overview
 

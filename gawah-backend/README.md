@@ -1,6 +1,6 @@
-# Gawah Backend
+# Gawah Backend — Voice AI Enabled Orchestration Engine
 
-FastAPI implementation of the Gawah specification:
+FastAPI orchestration layer for **Gawah (گواہ)**, part of the **Voice AI Enabled Orchestration Engine (Gawah)** project (originated at the Uplift AI × Replit Voice AI Hackathon 2026).
 
 - Uplift AI Realtime Assistants + TTS/STT (Singapore region)
 - Adhoc web sessions with full Phase 0–4 instructions + tools

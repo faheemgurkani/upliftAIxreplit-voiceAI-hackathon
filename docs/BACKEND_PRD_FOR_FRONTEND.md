@@ -1,6 +1,7 @@
-# Gawah — Backend PRD for Next.js Frontend Design
+# Voice AI Enabled Orchestration Engine (Gawah) — Backend PRD
 
-**Audience:** Frontend / product design  
+**Product:** Gawah (گواہ) · **Project:** Voice AI Enabled Orchestration Engine (Gawah)  
+**Origin:** [Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org) · Voice stack: **Uplift AI**
 **Primary UI:** Vite app at `frontend/artifacts/gawah-frontend` (legacy Next.js under `client/` is optional)  
 **Backend:** FastAPI — Vite proxies `/api` → `http://localhost:8000`  
 **Interactive API docs:** `http://localhost:8000/docs`  

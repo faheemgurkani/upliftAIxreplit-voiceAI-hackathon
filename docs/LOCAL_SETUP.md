@@ -1,6 +1,6 @@
-# Local setup (teammate demo / testing)
+# Local setup — Voice AI Enabled Orchestration Engine (Gawah)
 
-Run Gawah on your laptop: **FastAPI** backend + **Vite** dashboard.
+Run **Gawah** on your laptop: **FastAPI** orchestration backend + **Vite** dashboard. Project originated at the **Uplift AI × Replit Voice AI Hackathon (2026)**; live voice via **Uplift AI**.
 
 Supported: **macOS · Windows · Linux**.
 

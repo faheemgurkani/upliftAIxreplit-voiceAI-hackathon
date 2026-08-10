@@ -1,6 +1,8 @@
-# Gawah (گواہ) — Uplift AI × Replit Voice AI Hackathon
+# Voice AI Enabled Orchestration Engine (Gawah)
 
-Voice-first witness statements for Pakistan: a neighbour speaks on a **browser WebRTC** or **PSTN** call; counsel gets a structured CrPC **§161** record, consistency flags, and multi-witness clusters — without putting the caller’s identity on the dashboard.
+**Gawah (گواہ)** — voice-first witness statements for Pakistan: a neighbour speaks on a **browser WebRTC** or **PSTN** call; counsel gets a structured CrPC **§161** record, consistency flags, and multi-witness clusters — without putting the caller’s identity on the dashboard.
+
+> Originated at the **[Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org)**. Voice realtime, STT, and TTS powered by **[Uplift AI](https://upliftai.org)** (Singapore region).
 
 > **Spine:** A witness can go on record without going on record — and counsel can act on that record before the case collapses.
 
@@ -235,6 +237,8 @@ Hackathon MVP is **not** claiming full statutory privacy certification. Post-dem
 
 See [LICENSE](./LICENSE).
 
-## Hackathon
+## Origin
 
-Built for the **Uplift AI × Replit Voice AI Hackathon 2026**.
+**Voice AI Enabled Orchestration Engine (Gawah)** is the project name for this repository. The witness-facing product is **Gawah (گواہ)**.
+
+Built for the **[Uplift AI × Replit Voice AI Hackathon (2026)](https://upliftai.org)**. Core voice infrastructure — Realtime Assistants, STT, TTS, and PSTN — runs on **[Uplift AI](https://upliftai.org)** (Singapore region for Pakistan latency).

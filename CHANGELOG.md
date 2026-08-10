@@ -4,4 +4,4 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
-- Project scaffold created for the Uplift AI × Replit Voice AI Hackathon.
+- Project title standardized to **Voice AI Enabled Orchestration Engine (Gawah)**; product brand remains **Gawah (گواہ)**. Originated at Uplift AI × Replit Voice AI Hackathon (2026).
