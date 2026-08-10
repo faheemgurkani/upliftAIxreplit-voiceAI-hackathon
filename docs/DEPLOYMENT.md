@@ -10,8 +10,7 @@ Production runs as **two Vercel projects**: a Vite/React UI and a FastAPI API. T
 
 | Role | URL |
 |------|-----|
-| **App (primary)** | https://upliftaixreplit-gawah.vercel.app |
-| App (alternate) | https://gawah-frontend.vercel.app |
+| **App** | https://upliftaixreplit-gawah.vercel.app |
 | **API** | https://gawah-backend.vercel.app |
 | Health | https://gawah-backend.vercel.app/health |
 | OpenAPI / Swagger | https://gawah-backend.vercel.app/docs |
@@ -119,7 +118,7 @@ Set these in the Vercel dashboard or via `vercel env add`. **Never commit secret
 **CORS example** (comma-separated, no spaces required):
 
 ```text
-https://upliftaixreplit-gawah.vercel.app,https://gawah-frontend.vercel.app,http://localhost:5173,http://localhost:3000
+https://upliftaixreplit-gawah.vercel.app,http://localhost:5173,http://localhost:3000
 ```
 
 The backend also appends known Vercel UI hosts in `app/config.py` (`cors_origin_list`) so renames are less brittle.

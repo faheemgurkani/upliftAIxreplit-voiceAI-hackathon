@@ -93,8 +93,6 @@ class Settings(BaseSettings):
         # Always allow known Vercel UI hosts so frontend rebrands don't break CORS.
         for host in (
             "https://upliftaixreplit-gawah.vercel.app",
-            "https://gawah-app.vercel.app",
-            "https://gawah-frontend.vercel.app",
         ):
             if host not in origins:
                 origins.append(host)
