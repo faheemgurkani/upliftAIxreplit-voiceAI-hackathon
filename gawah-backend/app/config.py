@@ -61,6 +61,18 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
 
+    # Google Gemini (optional LLM — does not replace OpenRouter/Groq)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
+    # Google Cloud Speech/TTS (optional — does not replace Uplift STT/TTS)
+    google_application_credentials: str = ""
+    google_cloud_project_id: str = ""
+    google_stt_language_code: str = "ur-PK"
+    google_tts_language_code: str = "ur-IN"
+    google_tts_voice_name: str = ""
+    google_tts_speaking_rate: float = 1.0
+
     # Supabase
     supabase_url: str = ""
     supabase_key: str = ""
@@ -120,11 +132,23 @@ class Settings(BaseSettings):
         return bool(self.groq_api_key)
 
     @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
+
+    @property
+    def google_cloud_enabled(self) -> bool:
+        creds = self.google_application_credentials or os.environ.get(
+            "GOOGLE_APPLICATION_CREDENTIALS", ""
+        )
+        return bool(creds.strip())
+
+    @property
     def llm_enabled(self) -> bool:
         return (
             self.openrouter_enabled
             or self.groq_enabled
             or bool(self.openai_api_key)
+            or self.gemini_enabled
         )
 
 

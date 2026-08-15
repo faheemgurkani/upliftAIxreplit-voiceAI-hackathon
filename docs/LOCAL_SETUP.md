@@ -126,6 +126,15 @@ UPLIFT_TTS_VOICE_ID=defense-advocate   # male Standard Urdu
 UPLIFT_ASSISTANT_ID=                   # leave empty to create/sync on first call
 ```
 
+Optional **Google AI** (Gemini + Cloud STT/TTS — does not replace Uplift/OpenRouter):
+
+```env
+GEMINI_API_KEY=
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/gcp-service-account.json
+```
+
+See [`GOOGLE_AI_INTEGRATION.md`](./GOOGLE_AI_INTEGRATION.md) for full env list, code examples, and probe script.
+
 Frontend (usually leave blank — Vite proxies `/api` → `:8000`):
 
 ```env

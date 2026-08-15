@@ -61,6 +61,8 @@ Authoritative file: **`gawah-backend/.env`** (template: `.env.example`).
 | `UPLIFT_TTS_VOICE_ID` | Default **`defense-advocate`** (male Standard Urdu) |
 | `UPLIFT_TTS_OUTPUT_FORMAT` | Default `MP3_22050_128` |
 | `OPENROUTER_API_KEY` | Statement structuring / flags |
+| `GEMINI_API_KEY` | Optional Gemini LLM (see [`../docs/GOOGLE_AI_INTEGRATION.md`](../docs/GOOGLE_AI_INTEGRATION.md)) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Optional Cloud STT/TTS service account JSON |
 | `CORS_ORIGINS` | Include `http://localhost:5173` for the Vite app |
 
 Agent prompts live in `app/prompts/` (`agent_instructions.txt`, `agent_config.py`). Language lock: spoken lines in **Urdu Nastaliq** so LiveKit captions match audio.
@@ -79,6 +81,22 @@ Seeds refs **NBRA7K**, **SHPK2M**, **NBRC9Q** + Hussain Abad cluster + linked ca
 
 ```bash
 .venv/bin/python gawah-backend/scripts/smoke_test.py
+```
+
+## Google AI (optional)
+
+Gemini LLM + Cloud Speech/TTS are available **alongside** Uplift and OpenRouter — not wired as defaults.
+
+| Service | Module | Probe |
+|---------|--------|-------|
+| Gemini API | `app/services/gemini_service.py` | `scripts/google_services_test.py` |
+| Cloud STT | `app/services/google_stt_service.py` | same |
+| Cloud TTS | `app/services/google_tts_service.py` | same |
+
+Full setup, env vars, and code examples: [`../docs/GOOGLE_AI_INTEGRATION.md`](../docs/GOOGLE_AI_INTEGRATION.md).
+
+```bash
+.venv/bin/python gawah-backend/scripts/google_services_test.py
 ```
 
 ## Web browser path

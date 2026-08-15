@@ -79,6 +79,7 @@ Do not commit secrets.
 | [`docs/WEB_CALL_AND_DIALOGUE.md`](./docs/WEB_CALL_AND_DIALOGUE.md) | Live call pipeline |
 | [`docs/FULL_SPEC_AND_IMPLEMENTATION_PLAN.md`](./docs/FULL_SPEC_AND_IMPLEMENTATION_PLAN.md) | Full product spec |
 | [`docs/UPLIFTAI_DOCUMENTATION.md`](./docs/UPLIFTAI_DOCUMENTATION.md) | Uplift AI integration guide |
+| [`docs/GOOGLE_AI_INTEGRATION.md`](./docs/GOOGLE_AI_INTEGRATION.md) | Optional Gemini + Cloud STT/TTS |
 | [`gawah-backend/README.md`](./gawah-backend/README.md) | API runbook |
 
 ---

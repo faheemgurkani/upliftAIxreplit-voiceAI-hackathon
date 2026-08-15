@@ -78,6 +78,9 @@ def _health_payload():
         "openrouter_configured": settings.openrouter_enabled,
         "openrouter_model": settings.openrouter_model if settings.openrouter_enabled else None,
         "groq_configured": settings.groq_enabled,
+        "gemini_configured": settings.gemini_enabled,
+        "gemini_model": settings.gemini_model if settings.gemini_enabled else None,
+        "google_cloud_configured": settings.google_cloud_enabled,
         "llm_enabled": settings.llm_enabled,
         "assistant_id_set": bool(settings.uplift_assistant_id),
     }
