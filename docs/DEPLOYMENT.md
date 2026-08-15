@@ -19,7 +19,9 @@ After deploy, tour the seeded demo: **Dashboard → NBRA7K → Clusters → Call
 
 ### Domain note
 
-**Do not use** `https://gawah.vercel.app` for this project. That hostname belongs to another Vercel app (`gawahelper`). Vercel `.vercel.app` slugs are global; we use **`upliftaixreplit-gawah`** instead.
+**Canonical app URL:** `https://upliftaixreplit-gawah.vercel.app` only. Retired aliases (`gawah-frontend.vercel.app`, `gawah-app.vercel.app`) should not be used — remove them from the Vercel project **Settings → Domains** if they reappear after a rename.
+
+**Do not use** `https://gawah.vercel.app` — that hostname belongs to another Vercel app (`gawahelper`). Vercel `.vercel.app` slugs are global.
 
 ---
 

@@ -1,5 +1,6 @@
 import { type ReactNode, lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Analytics } from '@vercel/analytics/react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
@@ -62,11 +63,21 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
+/** Tracks SPA navigations for Vercel Web Analytics (must sit inside WouterRouter). */
+function VercelAnalytics() {
+  const [location] = useLocation();
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const path = `${base}${location || '/'}`.replace(/\/{2,}/g, '/') || '/';
+
+  return <Analytics mode={import.meta.env.PROD ? 'production' : 'development'} path={path} route={location || '/'} />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <Router />
+        <VercelAnalytics />
       </WouterRouter>
     </QueryClientProvider>
   );
